@@ -1,9 +1,5 @@
-import { Button } from "@/components/ui/button";
+import HomePageClient from "@/components/HomePageClient";
 
 export default function Home() {
-  return (
-    <main className="p-6">
-      <Button>shadcn</Button>
-    </main>
-  );
+  return <HomePageClient />;
 }

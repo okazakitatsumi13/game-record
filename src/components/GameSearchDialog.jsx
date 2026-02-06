@@ -97,7 +97,7 @@ export function GameSearchDialog({ open, onOpenChange, onPick }) {
         <Tabs value={tab} onValueChange={setTab} className="w-full">
           <TabsList className="w-full">
             <TabsTrigger value="steam">Steam</TabsTrigger>
-            <TabsTrigger value="rakuten" disabled>
+            {/* <TabsTrigger value="rakuten" disabled>
               楽天{" "}
               <Badge variant="secondary" className="ml-2">
                 対応予定
@@ -108,7 +108,7 @@ export function GameSearchDialog({ open, onOpenChange, onPick }) {
               <Badge variant="secondary" className="ml-2">
                 対応予定
               </Badge>
-            </TabsTrigger>
+            </TabsTrigger> */}
           </TabsList>
         </Tabs>
 
@@ -116,9 +116,7 @@ export function GameSearchDialog({ open, onOpenChange, onPick }) {
           <Input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder={
-              canSearch ? "タイトルで検索（例：仁王）" : "対応予定です"
-            }
+            placeholder={canSearch ? "タイトルで検索" : "対応予定です"}
             disabled={!canSearch}
             onKeyDown={(e) => {
               if (e.key === "Enter") runSearch();
@@ -140,7 +138,7 @@ export function GameSearchDialog({ open, onOpenChange, onPick }) {
           {items.length === 0 && !loading ? (
             <Card className="p-4">
               <p className="text-sm text-muted-foreground">
-                検索結果がここに表示されます。見つからない場合は、そのまま手入力で追加できます。
+                検索結果がここに表示されます。
               </p>
             </Card>
           ) : null}

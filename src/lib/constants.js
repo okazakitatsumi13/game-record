@@ -6,4 +6,4 @@ export const GAME_STATUSES = [
   { value: "dropped", label: "中断" },
 ];
 
-export const DEFAULT_PLATFORMS = ["PS5", "PS4", "Switch2", "Switch", "Steam"];
+export const DEFAULT_PLATFORMS = ["Steam", "Switch2", "PS5", "Switch", "PS4"];

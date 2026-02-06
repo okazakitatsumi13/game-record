@@ -12,6 +12,23 @@ function statusLabel(value) {
   return GAME_STATUSES.find((s) => s.value === value)?.label ?? value;
 }
 
+function statusBadgeClass(status) {
+  switch (status) {
+    case "playing":
+      return "bg-emerald-600 text-white hover:bg-emerald-600";
+    case "completed":
+      return "bg-blue-600 text-white hover:bg-blue-600";
+    case "backlog":
+      return "bg-slate-600 text-white hover:bg-slate-600";
+    case "wishlist":
+      return "bg-amber-500 text-white hover:bg-amber-500";
+    case "dropped":
+      return "bg-rose-600 text-white hover:bg-rose-600";
+    default:
+      return "";
+  }
+}
+
 function formatDateYMD(value) {
   if (!value) return null;
   return value;
@@ -43,10 +60,15 @@ export function GameCard({ game, onEdit, onDelete }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
 
   const release = formatDateYMD(game.releaseDate);
+  const started = formatDateYMD(game.startedAt);
+  const completed = formatDateYMD(game.completedAt);
   const updated = formatUpdatedAt(game.updatedAt);
 
   const coverUrl = (game.coverUrl ?? "").trim();
   const storeUrl = (game.storeUrl ?? "").trim();
+  const platform = (game.platform ?? "").trim();
+
+  const hasPlayDates = Boolean(started || completed);
 
   return (
     <>
@@ -68,7 +90,8 @@ export function GameCard({ game, onEdit, onDelete }) {
             </LinkOrSpan>
 
             {/* テキスト */}
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0 flex-1 flex flex-col">
+              {/* タイトル行 */}
               <div className="flex min-w-0 items-center gap-2">
                 <div className="min-w-0 truncate text-base font-semibold">
                   <LinkOrSpan
@@ -78,28 +101,68 @@ export function GameCard({ game, onEdit, onDelete }) {
                     {game.title}
                   </LinkOrSpan>
                 </div>
-                <Badge variant="secondary" className="shrink-0">
-                  {game.platform}
+
+                {/* platform は未選択なら出さない */}
+                {platform ? (
+                  <Badge variant="secondary" className="shrink-0">
+                    {platform}
+                  </Badge>
+                ) : null}
+              </div>
+
+              {/* ステータス + プレイ日時（右隣） */}
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                <Badge
+                  className={`inline-flex w-20 justify-center ${statusBadgeClass(
+                    game.status,
+                  )}`}
+                >
+                  {statusLabel(game.status)}
                 </Badge>
-              </div>
 
-              {/* status */}
-              <div className="mt-2">
-                <Badge>{statusLabel(game.status)}</Badge>
-              </div>
+                {hasPlayDates ? (
+                  <div className="grid items-center text-xs text-muted-foreground tabular-nums grid-cols-[4.5rem_8rem_4.5rem_8rem]">
+                    {/* 開始日：無ければ完全に空白（幅は維持） */}
+                    <span
+                      className={`text-right ${started ? "" : "invisible"}`}
+                    >
+                      開始日：
+                    </span>
+                    <span className={`${started ? "" : "invisible"}`}>
+                      {started}
+                    </span>
 
-              {(release || updated) && (
-                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                  {release && <span>発売日：{release}</span>}
-                  {updated && <span>更新：{updated}</span>}
-                </div>
-              )}
+                    {/* 終了日：無ければ完全に空白（幅は維持） */}
+                    <span
+                      className={`text-right ${completed ? "" : "invisible"}`}
+                    >
+                      終了日：
+                    </span>
+                    <span className={`${completed ? "" : "invisible"}`}>
+                      {completed}
+                    </span>
+                  </div>
+                ) : null}
+              </div>
 
               {/* メモ */}
               {game.note ? (
-                <p className="mt-3 line-clamp-2 text-sm text-muted-foreground">
+                <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">
                   {game.note}
                 </p>
+              ) : null}
+
+              {/* 日付（最下段固定：左=発売日 / 右下=更新） */}
+              {release || updated ? (
+                <div className="mt-auto pt-2 flex items-end justify-between gap-4 text-xs text-muted-foreground">
+                  <div className="flex flex-wrap gap-x-4 gap-y-1">
+                    {release ? <span>発売日：{release}</span> : null}
+                  </div>
+
+                  {updated ? (
+                    <span className="shrink-0">更新：{updated}</span>
+                  ) : null}
+                </div>
               ) : null}
             </div>
           </div>

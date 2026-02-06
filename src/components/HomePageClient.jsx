@@ -89,7 +89,7 @@ export default function HomePageClient() {
           const note = (g.note ?? "").toLowerCase();
           return title.includes(q) || note.includes(q);
         })
-        // ③ 並び替え（ここが今回のメイン）
+        // ③ 並び替え
         .sort((a, b) => {
           if (sortKey === "updatedDesc")
             return (b.updatedAt ?? 0) - (a.updatedAt ?? 0);
@@ -146,7 +146,7 @@ export default function HomePageClient() {
     const title = (picked?.title ?? "").trim();
     if (!title) return;
 
-    const platform = "Steam"; // 検索元がSteamなので固定でOK（後から編集で変更可）
+    const platform = "Steam";
     const statusDefault = GAME_STATUSES[0]?.value ?? "backlog";
 
     const created = {

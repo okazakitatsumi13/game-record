@@ -33,6 +33,8 @@ export default function HomePageClient() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
 
+  const [openSearchOnOpen, setOpenSearchOnOpen] = useState(false);
+
   const [editingGame, setEditingGame] = useState(null);
   const [dialogMode, setDialogMode] = useState("create");
 
@@ -193,7 +195,15 @@ export default function HomePageClient() {
           </div>
 
           <div className="flex items-center gap-2">
-            <Button variant="secondary" onClick={() => setIsSearchOpen(true)}>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setDialogMode("create");
+                setEditingGame(null);
+                setOpenSearchOnOpen(true);
+                setIsDialogOpen(true);
+              }}
+            >
               検索して追加
             </Button>
 
@@ -201,6 +211,7 @@ export default function HomePageClient() {
               onClick={() => {
                 setDialogMode("create");
                 setEditingGame(null);
+                setOpenSearchOnOpen(false);
                 setIsDialogOpen(true);
               }}
             >
@@ -239,7 +250,7 @@ export default function HomePageClient() {
 
           <div className="flex items-center gap-2 md:justify-end">
             <Select value={sortKey} onValueChange={setSortKey}>
-              <SelectTrigger className="w-full md:w-[220px]">
+              <SelectTrigger className="w-full md:w-55">
                 <SelectValue placeholder="並び替え" />
               </SelectTrigger>
               <SelectContent>
@@ -264,12 +275,17 @@ export default function HomePageClient() {
         {/* Add Dialog */}
         <GameDialog
           open={isDialogOpen}
-          onOpenChange={setIsDialogOpen}
+          onOpenChange={(next) => {
+            setIsDialogOpen(next);
+            if (!next) setOpenSearchOnOpen(false);
+          }}
           platformOptions={platformOptions}
           mode={dialogMode}
           initialGame={editingGame}
           onSubmit={handleSubmitGame}
+          openSearchOnOpen={openSearchOnOpen}
         />
+
         <GameSearchDialog
           open={isSearchOpen}
           onOpenChange={setIsSearchOpen}

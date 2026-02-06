@@ -41,6 +41,7 @@ export function GameDialog({
   mode,
   initialGame,
   onSubmit,
+  openSearchOnOpen,
 }) {
   const statusDefault = GAME_STATUSES[0]?.value ?? "backlog";
 
@@ -58,6 +59,17 @@ export function GameDialog({
   const [storeUrl, setStoreUrl] = useState("");
 
   const [searchOpen, setSearchOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+
+    // createモードで、トップの「検索して追加」から開いた場合だけ自動で検索を開く
+    if (mode === "create" && openSearchOnOpen) {
+      // 1フレーム遅らせると、Dialogが開いてからSearchDialogが重なって安定する
+      const t = setTimeout(() => setSearchOpen(true), 0);
+      return () => clearTimeout(t);
+    }
+  }, [open, mode, openSearchOnOpen]);
 
   const effectivePlatform = useMemo(() => {
     const custom = platformCustom.trim();

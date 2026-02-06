@@ -122,7 +122,7 @@ export function GameCard({ game, onEdit, onDelete }) {
 
                 {hasPlayDates ? (
                   <div className="grid items-center text-xs text-muted-foreground tabular-nums grid-cols-[4.5rem_8rem_4.5rem_8rem]">
-                    {/* 開始日：無ければ完全に空白（幅は維持） */}
+                    {/* 開始日 */}
                     <span
                       className={`text-right ${started ? "" : "invisible"}`}
                     >
@@ -132,11 +132,11 @@ export function GameCard({ game, onEdit, onDelete }) {
                       {started}
                     </span>
 
-                    {/* 終了日：無ければ完全に空白（幅は維持） */}
+                    {/* 終了日 */}
                     <span
                       className={`text-right ${completed ? "" : "invisible"}`}
                     >
-                      終了日：
+                      クリア日：
                     </span>
                     <span className={`${completed ? "" : "invisible"}`}>
                       {completed}

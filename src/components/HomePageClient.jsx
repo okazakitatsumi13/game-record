@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -43,6 +43,79 @@ export default function HomePageClient() {
   // platform候補（初期 + ユーザー追加）
   const [platformOptions, setPlatformOptions] = useState(DEFAULT_PLATFORMS);
 
+  const importInputRef = useRef(null);
+
+  function handleExport() {
+    const payload = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      games,
+      // ユーザーが追加した platform も含めたいので保存済みを使う
+      platforms: loadPlatforms(),
+    };
+
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: "application/json",
+    });
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `game-record-export-${new Date()
+      .toISOString()
+      .slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function handleClickImport() {
+    importInputRef.current?.click();
+  }
+
+  async function handleImportFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+
+      const importedGames = Array.isArray(data?.games) ? data.games : null;
+      const importedPlatforms = Array.isArray(data?.platforms)
+        ? data.platforms
+        : [];
+
+      if (!importedGames) {
+        alert("インポート失敗：games が見つかりませんでした");
+        return;
+      }
+
+      // state 更新
+      setGames(importedGames);
+
+      // platform: デフォルト + インポート をマージして保存/反映
+      const mergedPlatforms = Array.from(
+        new Set([...DEFAULT_PLATFORMS, ...importedPlatforms]),
+      ).filter(Boolean);
+
+      setPlatformOptions(mergedPlatforms);
+      savePlatforms(
+        mergedPlatforms.filter((p) => !DEFAULT_PLATFORMS.includes(p)),
+      );
+
+      // games は useEffect で saveGames が走る設計なのでここではOK
+      alert("インポートしました！");
+    } catch (err) {
+      console.error(err);
+      alert("インポート失敗：JSONの形式が不正です");
+    } finally {
+      // 同じファイルを連続で選べるようにクリア
+      e.target.value = "";
+    }
+  }
+
   // 初回ロード
   useEffect(() => {
     const initialGames = loadGames();
@@ -65,11 +138,6 @@ export default function HomePageClient() {
     if (!value) return null;
     const t = new Date(value).getTime();
     return Number.isNaN(t) ? null : t;
-  }
-
-  function compareTitle(a, b) {
-    // 日本語っぽい順（厳密な五十音順ではない）
-    return (a ?? "").localeCompare(b ?? "", "ja");
   }
 
   const filteredGames = useMemo(() => {
@@ -114,9 +182,7 @@ export default function HomePageClient() {
             return at - bt;
           }
 
-          if (sortKey === "titleDesc") return compareTitle(b.title, a.title);
-          // titleAsc（デフォルト）
-          return compareTitle(a.title, b.title);
+          return 0;
         })
     );
   }, [games, statusFilter, query, sortKey]);
@@ -195,73 +261,85 @@ export default function HomePageClient() {
           </div>
 
           <div className="flex items-center gap-2">
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setDialogMode("create");
-                setEditingGame(null);
-                setOpenSearchOnOpen(true);
-                setIsDialogOpen(true);
-              }}
-            >
-              検索して追加
-            </Button>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept="application/json"
+              className="hidden"
+              onChange={handleImportFile}
+            />
 
-            <Button
-              onClick={() => {
-                setDialogMode("create");
-                setEditingGame(null);
-                setOpenSearchOnOpen(false);
-                setIsDialogOpen(true);
-              }}
-            >
-              ゲームを追加
+            <Button variant="secondary" onClick={handleClickImport}>
+              インポート
+            </Button>
+            <Button variant="secondary" onClick={handleExport}>
+              エクスポート
             </Button>
           </div>
         </header>
 
         {/* Controls */}
-        <section className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <Tabs
-            value={statusFilter}
-            onValueChange={setStatusFilter}
-            className="w-full md:w-auto"
-          >
-            <TabsList className="w-full md:w-auto">
-              <TabsTrigger value="all">すべて</TabsTrigger>
-              {GAME_STATUSES.map((s) => (
-                <TabsTrigger key={s.value} value={s.value}>
-                  {s.label}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
+        <section className="space-y-3">
+          {/* 1行目 */}
+          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <Tabs
+              value={statusFilter}
+              onValueChange={setStatusFilter}
+              className="w-full"
+            >
+              <TabsList className="w-full justify-start overflow-x-auto overflow-y-hidden whitespace-nowrap">
+                <TabsTrigger value="all">すべて</TabsTrigger>
+                {GAME_STATUSES.map((s) => (
+                  <TabsTrigger key={s.value} value={s.value}>
+                    {s.label}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
 
-          <div className="flex flex-1 items-center gap-2">
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="タイトル/メモで検索…"
-            />
-            <Badge variant="secondary" className="shrink-0">
-              表示 {filteredGames.length} 件
-            </Badge>
+            <div className="w-full md:w-70">
+              <Select value={sortKey} onValueChange={setSortKey}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="並び替え" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="updatedDesc">更新が新しい順</SelectItem>
+                  <SelectItem value="updatedAsc">更新が古い順</SelectItem>
+                  <SelectItem value="releaseDesc">発売日が新しい順</SelectItem>
+                  <SelectItem value="releaseAsc">発売日が古い順</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
-          <div className="flex items-center gap-2 md:justify-end">
-            <Select value={sortKey} onValueChange={setSortKey}>
-              <SelectTrigger className="w-full md:w-55">
-                <SelectValue placeholder="並び替え" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="updatedDesc">更新が新しい順</SelectItem>
-                <SelectItem value="updatedAsc">更新が古い順</SelectItem>
-                <SelectItem value="releaseDesc">発売日が新しい順</SelectItem>
-                <SelectItem value="releaseAsc">発売日が古い順</SelectItem>
-                <SelectItem value="titleAsc">タイトル A→Z</SelectItem>
-                <SelectItem value="titleDesc">タイトル Z→A</SelectItem>
-              </SelectContent>
-            </Select>
+          {/* 2行目 */}
+          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <div className="flex w-full flex-1 items-center gap-2">
+              <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="タイトル/メモで検索…"
+              />
+              <Badge variant="secondary" className="shrink-0">
+                表示 {filteredGames.length} 件
+              </Badge>
+            </div>
+
+            <div className="flex w-full flex-wrap items-center justify-end gap-2 md:w-70">
+              <Button variant="secondary" onClick={() => setIsSearchOpen(true)}>
+                検索して追加
+              </Button>
+
+              <Button
+                onClick={() => {
+                  setDialogMode("create");
+                  setEditingGame(null);
+                  setIsDialogOpen(true);
+                }}
+              >
+                ゲームを追加
+              </Button>
+            </div>
           </div>
         </section>
 

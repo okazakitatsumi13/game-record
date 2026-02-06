@@ -44,12 +44,12 @@ export function GameDialog({
   openSearchOnOpen,
 }) {
   const statusDefault = GAME_STATUSES[0]?.value ?? "backlog";
+  const PLATFORM_NONE = "__none__";
 
   const [title, setTitle] = useState("");
   const [status, setStatus] = useState(statusDefault);
-  const [platformSelect, setPlatformSelect] = useState(
-    platformOptions?.[0] ?? "PS5",
-  );
+  const [platformSelect, setPlatformSelect] = useState(PLATFORM_NONE);
+
   const [platformCustom, setPlatformCustom] = useState("");
   const [note, setNote] = useState("");
   const [releaseDate, setReleaseDate] = useState("");
@@ -59,6 +59,9 @@ export function GameDialog({
   const [storeUrl, setStoreUrl] = useState("");
 
   const [searchOpen, setSearchOpen] = useState(false);
+
+  const [startedAt, setStartedAt] = useState("");
+  const [completedAt, setCompletedAt] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -74,8 +77,9 @@ export function GameDialog({
   const effectivePlatform = useMemo(() => {
     const custom = platformCustom.trim();
     if (custom) return custom;
+    if (platformSelect === PLATFORM_NONE) return "";
     return platformSelect;
-  }, [platformCustom, platformSelect]);
+  }, [platformCustom, platformSelect, PLATFORM_NONE]);
 
   // open時に初期化（create/editで挙動分け）
   useEffect(() => {
@@ -87,13 +91,18 @@ export function GameDialog({
       setReleaseDate(initialGame.releaseDate ?? "");
       setCoverUrl(initialGame.coverUrl ?? "");
       setStoreUrl(initialGame.storeUrl ?? "");
+      setStartedAt(initialGame.startedAt ?? "");
+      setCompletedAt(initialGame.completedAt ?? "");
 
-      const p = initialGame.platform ?? platformOptions?.[0] ?? "PS5";
-      if (platformOptions.includes(p)) {
+      const p = (initialGame.platform ?? "").trim();
+      if (!p) {
+        setPlatformSelect(PLATFORM_NONE);
+        setPlatformCustom("");
+      } else if (platformOptions.includes(p)) {
         setPlatformSelect(p);
         setPlatformCustom("");
       } else {
-        setPlatformSelect(platformOptions?.[0] ?? "PS5");
+        setPlatformSelect(PLATFORM_NONE);
         setPlatformCustom(p);
       }
 
@@ -104,12 +113,14 @@ export function GameDialog({
     // create
     setTitle("");
     setStatus(statusDefault);
-    setPlatformSelect(platformOptions?.[0] ?? "PS5");
+    setPlatformSelect(PLATFORM_NONE);
     setPlatformCustom("");
     setNote("");
     setReleaseDate("");
     setCoverUrl("");
     setStoreUrl("");
+    setStartedAt("");
+    setCompletedAt("");
   }, [open, mode, initialGame, statusDefault, platformOptions]);
 
   function handlePickFromSearch(picked) {
@@ -142,6 +153,8 @@ export function GameDialog({
         releaseDate: releaseDate || "",
         coverUrl: coverUrl || "",
         storeUrl: storeUrl || "",
+        startedAt: startedAt || "",
+        completedAt: completedAt || "",
       };
 
       const maybeNewPlatform =
@@ -166,6 +179,8 @@ export function GameDialog({
       releaseDate: releaseDate || "",
       coverUrl: coverUrl || "",
       storeUrl: storeUrl || "",
+      startedAt: startedAt || "",
+      completedAt: completedAt || "",
     };
 
     const maybeNewPlatform =
@@ -190,7 +205,7 @@ export function GameDialog({
           <form onSubmit={handleSubmit} className="grid gap-4">
             <div className="grid gap-2">
               <div className="flex items-center justify-between gap-2">
-                <Label htmlFor="title">タイトル</Label>
+                <Label htmlFor="title">タイトル（必須）</Label>
                 <Button
                   type="button"
                   variant="secondary"
@@ -205,26 +220,22 @@ export function GameDialog({
                 id="title"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="例：ゼルダの伝説 ティアーズ オブ ザ キングダム"
+                // placeholder=""
                 autoFocus
               />
             </div>
 
             {coverUrl ? (
               <div className="grid gap-2">
-                <Label>サムネ（任意）</Label>
-                <div className="flex min-w-0 items-center gap-3 rounded-lg border p-3">
+                {/* <Label>サムネ</Label> */}
+                <div className="flex items-center gap-3 rounded-lg border p-3">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={coverUrl}
                     alt=""
-                    className="h-12 w-12 rounded object-cover"
+                    className="h-12 w-12 rounded object-contain bg-muted p-1"
                   />
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-xs text-muted-foreground">
-                      {coverUrl}
-                    </div>
-                  </div>
+                  <div className="flex-1" />
                   <Button
                     type="button"
                     variant="outline"
@@ -256,31 +267,43 @@ export function GameDialog({
             <div className="grid gap-2">
               <Label>プラットフォーム</Label>
 
-              <Select value={platformSelect} onValueChange={setPlatformSelect}>
-                <SelectTrigger>
-                  <SelectValue placeholder="選択してください" />
-                </SelectTrigger>
-                <SelectContent>
-                  {platformOptions.map((p) => (
-                    <SelectItem key={p} value={p}>
-                      {p}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {/* 横並び */}
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-2">
+                  <Select
+                    value={platformSelect}
+                    onValueChange={setPlatformSelect}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="選択してください" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={PLATFORM_NONE}>未選択</SelectItem>
+                      {platformOptions.map((p) => (
+                        <SelectItem key={p} value={p}>
+                          {p}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
-              <Input
-                value={platformCustom}
-                onChange={(e) => setPlatformCustom(e.target.value)}
-                placeholder="候補にない場合：例）ファミコン / PS1 / PS Vita"
-              />
+                <div className="grid gap-2">
+                  <Input
+                    value={platformCustom}
+                    onChange={(e) => setPlatformCustom(e.target.value)}
+                    placeholder="その他自由入力"
+                  />
+                </div>
+              </div>
+
               <p className="text-xs text-muted-foreground">
-                （次回以降の候補にも追加されます）
+                ※自由入力がある場合は、そちらを優先して保存します（次回以降の候補にも追加されます）
               </p>
             </div>
 
             <div className="grid gap-2">
-              <Label htmlFor="releaseDate">発売日（任意）</Label>
+              <Label htmlFor="releaseDate">発売日</Label>
               <Input
                 id="releaseDate"
                 type="date"
@@ -289,8 +312,30 @@ export function GameDialog({
               />
             </div>
 
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-2">
+                <Label htmlFor="startedAt">プレイ開始日</Label>
+                <Input
+                  id="startedAt"
+                  type="date"
+                  value={startedAt}
+                  onChange={(e) => setStartedAt(e.target.value)}
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="completedAt">クリア日</Label>
+                <Input
+                  id="completedAt"
+                  type="date"
+                  value={completedAt}
+                  onChange={(e) => setCompletedAt(e.target.value)}
+                />
+              </div>
+            </div>
+
             <div className="grid gap-2">
-              <Label htmlFor="storeUrl">ストアURL（任意）</Label>
+              <Label htmlFor="storeUrl">ストアURL</Label>
               <Input
                 id="storeUrl"
                 type="url"
@@ -298,9 +343,9 @@ export function GameDialog({
                 onChange={(e) => setStoreUrl(e.target.value)}
                 placeholder="例：https://store.steampowered.com/app/..."
               />
-              <p className="text-xs text-muted-foreground">
+              {/* <p className="text-xs text-muted-foreground">
                 タイトル/サムネからストアへ飛べます（Steam検索で選ぶと自動入力されます）
-              </p>
+              </p> */}
             </div>
 
             <div className="grid gap-2">
@@ -309,7 +354,7 @@ export function GameDialog({
                 id="note"
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
-                placeholder="例：次は◯◯の祠から。DLCもやりたい"
+                // placeholder=""
               />
             </div>
 

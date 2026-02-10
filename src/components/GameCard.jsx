@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -31,7 +32,7 @@ function statusBadgeClass(status) {
 
 function formatDateYMD(value) {
   if (!value) return null;
-  return value;
+  return value; // 既に "YYYY-MM-DD" を想定
 }
 
 function formatUpdatedAt(ms) {
@@ -60,11 +61,11 @@ export function GameCard({ game, onEdit, onDelete }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
 
   const release = formatDateYMD(game.releaseDate);
-  const started = formatDateYMD(game.startedAt);
-  const completed = formatDateYMD(game.completedAt);
+  const started = formatDateYMD(game.playStartDate);
+  const completed = formatDateYMD(game.clearDate);
   const updated = formatUpdatedAt(game.updatedAt);
 
-  const coverUrl = (game.coverUrl ?? "").trim();
+  const thumbnailUrl = (game.thumbnailUrl ?? "").trim();
   const storeUrl = (game.storeUrl ?? "").trim();
   const platform = (game.platform ?? "").trim();
 
@@ -77,13 +78,18 @@ export function GameCard({ game, onEdit, onDelete }) {
           {/* 左：サムネ＋情報 */}
           <div className="flex min-w-0 flex-1 gap-4">
             <LinkOrSpan href={storeUrl || ""} className="shrink-0">
-              {coverUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={coverUrl}
-                  alt=""
-                  className="h-24 w-24 rounded-md bg-muted p-1 object-contain"
-                />
+              {thumbnailUrl ? (
+                <div className="h-24 w-24 overflow-hidden rounded-md bg-muted p-1">
+                  <Image
+                    src={thumbnailUrl}
+                    alt=""
+                    width={96}
+                    height={96}
+                    className="h-full w-full object-contain"
+                    sizes="96px"
+                    priority={false}
+                  />
+                </div>
               ) : (
                 <div className="h-24 w-24 rounded-md bg-muted" />
               )}
@@ -110,7 +116,7 @@ export function GameCard({ game, onEdit, onDelete }) {
                 ) : null}
               </div>
 
-              {/* ステータス + プレイ日時（右隣） */}
+              {/* ステータス + プレイ日時 */}
               <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
                 <Badge
                   className={`inline-flex w-20 justify-center ${statusBadgeClass(
@@ -122,7 +128,6 @@ export function GameCard({ game, onEdit, onDelete }) {
 
                 {hasPlayDates ? (
                   <div className="grid items-center text-xs text-muted-foreground tabular-nums grid-cols-[4.5rem_8rem_4.5rem_8rem]">
-                    {/* 開始日 */}
                     <span
                       className={`text-right ${started ? "" : "invisible"}`}
                     >
@@ -132,7 +137,6 @@ export function GameCard({ game, onEdit, onDelete }) {
                       {started}
                     </span>
 
-                    {/* 終了日 */}
                     <span
                       className={`text-right ${completed ? "" : "invisible"}`}
                     >
@@ -146,9 +150,9 @@ export function GameCard({ game, onEdit, onDelete }) {
               </div>
 
               {/* メモ */}
-              {game.note ? (
+              {game.memo ? (
                 <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">
-                  {game.note}
+                  {game.memo}
                 </p>
               ) : null}
 

@@ -21,7 +21,6 @@ import {
 } from "@/components/ui/select";
 
 import { GAME_STATUSES } from "@/lib/constants";
-import { createId } from "@/lib/storage";
 import { GameSearchDialog } from "@/components/GameSearchDialog";
 
 /**
@@ -32,6 +31,7 @@ import { GameSearchDialog } from "@/components/GameSearchDialog";
  *  mode: "create" | "edit",
  *  initialGame?: any,
  *  onSubmit: (game:any, maybeNewPlatform?:string)=>void
+ *  openSearchOnOpen?: boolean
  * }} props
  */
 export function GameDialog({
@@ -49,26 +49,22 @@ export function GameDialog({
   const [title, setTitle] = useState("");
   const [status, setStatus] = useState(statusDefault);
   const [platformSelect, setPlatformSelect] = useState(PLATFORM_NONE);
-
   const [platformCustom, setPlatformCustom] = useState("");
-  const [note, setNote] = useState("");
+
+  const [memo, setMemo] = useState("");
   const [releaseDate, setReleaseDate] = useState("");
-
-  const [coverUrl, setCoverUrl] = useState("");
-
+  const [thumbnailUrl, setThumbnailUrl] = useState("");
   const [storeUrl, setStoreUrl] = useState("");
+  const [playStartDate, setPlayStartDate] = useState("");
+  const [clearDate, setClearDate] = useState("");
 
   const [searchOpen, setSearchOpen] = useState(false);
 
-  const [startedAt, setStartedAt] = useState("");
-  const [completedAt, setCompletedAt] = useState("");
-
+  // createモードで、トップの「検索して追加」から開いた場合だけ自動で検索を開く
   useEffect(() => {
     if (!open) return;
 
-    // createモードで、トップの「検索して追加」から開いた場合だけ自動で検索を開く
     if (mode === "create" && openSearchOnOpen) {
-      // 1フレーム遅らせると、Dialogが開いてからSearchDialogが重なって安定する
       const t = setTimeout(() => setSearchOpen(true), 0);
       return () => clearTimeout(t);
     }
@@ -79,20 +75,23 @@ export function GameDialog({
     if (custom) return custom;
     if (platformSelect === PLATFORM_NONE) return "";
     return platformSelect;
-  }, [platformCustom, platformSelect, PLATFORM_NONE]);
+  }, [platformCustom, platformSelect]);
 
-  // open時に初期化（create/editで挙動分け）
+  // open時に初期化：createでも initialGame があればそれを反映する（ここが今回の本質）
   useEffect(() => {
     if (!open) return;
 
-    if (mode === "edit" && initialGame) {
+    // initialGame があれば create/edit どちらでも反映
+    if (initialGame) {
       setTitle(initialGame.title ?? "");
       setStatus(initialGame.status ?? statusDefault);
+
       setReleaseDate(initialGame.releaseDate ?? "");
-      setCoverUrl(initialGame.coverUrl ?? "");
+      setThumbnailUrl(initialGame.thumbnailUrl ?? "");
       setStoreUrl(initialGame.storeUrl ?? "");
-      setStartedAt(initialGame.startedAt ?? "");
-      setCompletedAt(initialGame.completedAt ?? "");
+
+      setPlayStartDate(initialGame.playStartDate ?? "");
+      setClearDate(initialGame.clearDate ?? "");
 
       const p = (initialGame.platform ?? "").trim();
       if (!p) {
@@ -106,31 +105,31 @@ export function GameDialog({
         setPlatformCustom(p);
       }
 
-      setNote(initialGame.note ?? "");
+      setMemo(initialGame.memo ?? "");
       return;
     }
 
-    // create
+    // initialGame が無いなら通常のcreate初期化
     setTitle("");
     setStatus(statusDefault);
     setPlatformSelect(PLATFORM_NONE);
     setPlatformCustom("");
-    setNote("");
+    setMemo("");
     setReleaseDate("");
-    setCoverUrl("");
+    setThumbnailUrl("");
     setStoreUrl("");
-    setStartedAt("");
-    setCompletedAt("");
-  }, [open, mode, initialGame, statusDefault, platformOptions]);
+    setPlayStartDate("");
+    setClearDate("");
+  }, [open, initialGame, statusDefault, platformOptions]);
 
   function handlePickFromSearch(picked) {
-    // titleは必須
     if (picked?.title) setTitle(picked.title);
-
     if (picked?.releaseDate) setReleaseDate(picked.releaseDate);
 
-    // サムネ・ストアURL
-    if (picked?.coverUrl) setCoverUrl(picked.coverUrl);
+    // Steam検索側のキー名揺れに両対応
+    const url = picked?.thumbnailUrl || picked?.coverUrl;
+    if (url) setThumbnailUrl(url);
+
     if (picked?.storeUrl) setStoreUrl(picked.storeUrl);
   }
 
@@ -140,55 +139,30 @@ export function GameDialog({
     const t = title.trim();
     if (!t) return;
 
-    const now = Date.now();
-
-    if (mode === "edit" && initialGame) {
-      const updated = {
-        ...initialGame,
-        title: t,
-        platform: effectivePlatform,
-        status,
-        note: note.trim(),
-        updatedAt: now,
-        releaseDate: releaseDate || "",
-        coverUrl: coverUrl || "",
-        storeUrl: storeUrl || "",
-        startedAt: startedAt || "",
-        completedAt: completedAt || "",
-      };
-
-      const maybeNewPlatform =
-        effectivePlatform && !platformOptions.includes(effectivePlatform)
-          ? effectivePlatform
-          : undefined;
-
-      onSubmit(updated, maybeNewPlatform);
-      onOpenChange(false);
-      return;
-    }
-
-    // create
-    const created = {
-      id: createId(),
-      title: t,
-      platform: effectivePlatform,
-      status,
-      note: note.trim(),
-      createdAt: now,
-      updatedAt: now,
-      releaseDate: releaseDate || "",
-      coverUrl: coverUrl || "",
-      storeUrl: storeUrl || "",
-      startedAt: startedAt || "",
-      completedAt: completedAt || "",
-    };
-
     const maybeNewPlatform =
       effectivePlatform && !platformOptions.includes(effectivePlatform)
         ? effectivePlatform
         : undefined;
 
-    onSubmit(created, maybeNewPlatform);
+    const payload = {
+      // edit時は id を保持（DB update のため）
+      ...(mode === "edit" && initialGame?.id ? { id: initialGame.id } : {}),
+
+      title: t,
+      platform: effectivePlatform,
+      status,
+
+      memo: memo.trim(),
+
+      releaseDate: releaseDate || "",
+      playStartDate: playStartDate || "",
+      clearDate: clearDate || "",
+
+      thumbnailUrl: thumbnailUrl || "",
+      storeUrl: storeUrl || "",
+    };
+
+    onSubmit(payload, maybeNewPlatform);
     onOpenChange(false);
   }
 
@@ -203,6 +177,7 @@ export function GameDialog({
           </DialogHeader>
 
           <form onSubmit={handleSubmit} className="grid gap-4">
+            {/* タイトル */}
             <div className="grid gap-2">
               <div className="flex items-center justify-between gap-2">
                 <Label htmlFor="title">タイトル（必須）</Label>
@@ -215,160 +190,128 @@ export function GameDialog({
                   検索して追加
                 </Button>
               </div>
-
               <Input
                 id="title"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                // placeholder=""
-                autoFocus
+                placeholder="例：ELDEN RING"
+                required
               />
             </div>
 
-            {coverUrl ? (
+            {/* ステータス / プラットフォーム */}
+            <div className="grid gap-3 md:grid-cols-2">
               <div className="grid gap-2">
-                {/* <Label>サムネ</Label> */}
-                <div className="flex items-center gap-3 rounded-lg border p-3">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={coverUrl}
-                    alt=""
-                    className="h-12 w-12 rounded object-contain bg-muted p-1"
-                  />
-                  <div className="flex-1" />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCoverUrl("")}
-                  >
-                    解除
-                  </Button>
-                </div>
-              </div>
-            ) : null}
-
-            <div className="grid gap-2">
-              <Label>ステータス</Label>
-              <Select value={status} onValueChange={setStatus}>
-                <SelectTrigger>
-                  <SelectValue placeholder="選択してください" />
-                </SelectTrigger>
-                <SelectContent>
-                  {GAME_STATUSES.map((s) => (
-                    <SelectItem key={s.value} value={s.value}>
-                      {s.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="grid gap-2">
-              <Label>プラットフォーム</Label>
-
-              {/* 横並び */}
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="grid gap-2">
-                  <Select
-                    value={platformSelect}
-                    onValueChange={setPlatformSelect}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="選択してください" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={PLATFORM_NONE}>未選択</SelectItem>
-                      {platformOptions.map((p) => (
-                        <SelectItem key={p} value={p}>
-                          {p}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="grid gap-2">
-                  <Input
-                    value={platformCustom}
-                    onChange={(e) => setPlatformCustom(e.target.value)}
-                    placeholder="その他自由入力"
-                  />
-                </div>
+                <Label>ステータス（必須）</Label>
+                <Select value={status} onValueChange={setStatus}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="ステータスを選択" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {GAME_STATUSES.map((s) => (
+                      <SelectItem key={s.value} value={s.value}>
+                        {s.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
-              <p className="text-xs text-muted-foreground">
-                ※自由入力がある場合は、そちらを優先して保存します（次回以降の候補にも追加されます）
-              </p>
-            </div>
-
-            <div className="grid gap-2">
-              <Label htmlFor="releaseDate">発売日</Label>
-              <Input
-                id="releaseDate"
-                type="date"
-                value={releaseDate}
-                onChange={(e) => setReleaseDate(e.target.value)}
-              />
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2">
               <div className="grid gap-2">
-                <Label htmlFor="startedAt">プレイ開始日</Label>
+                <Label>プラットフォーム（任意）</Label>
+                <Select
+                  value={platformSelect}
+                  onValueChange={setPlatformSelect}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="未選択" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={PLATFORM_NONE}>未選択</SelectItem>
+                    {platformOptions.map((p) => (
+                      <SelectItem key={p} value={p}>
+                        {p}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                {/* 既存候補に無いプラットフォームを入力できる */}
                 <Input
-                  id="startedAt"
-                  type="date"
-                  value={startedAt}
-                  onChange={(e) => setStartedAt(e.target.value)}
-                />
-              </div>
-
-              <div className="grid gap-2">
-                <Label htmlFor="completedAt">クリア日</Label>
-                <Input
-                  id="completedAt"
-                  type="date"
-                  value={completedAt}
-                  onChange={(e) => setCompletedAt(e.target.value)}
+                  value={platformCustom}
+                  onChange={(e) => setPlatformCustom(e.target.value)}
+                  placeholder="候補に無ければ入力（例：PC）"
                 />
               </div>
             </div>
 
-            <div className="grid gap-2">
-              <Label htmlFor="storeUrl">ストアURL</Label>
-              <Input
-                id="storeUrl"
-                type="url"
-                value={storeUrl}
-                onChange={(e) => setStoreUrl(e.target.value)}
-                placeholder="例：https://store.steampowered.com/app/..."
-              />
-              {/* <p className="text-xs text-muted-foreground">
-                タイトル/サムネからストアへ飛べます（Steam検索で選ぶと自動入力されます）
-              </p> */}
+            {/* 日付 */}
+            <div className="grid gap-3 md:grid-cols-3">
+              <div className="grid gap-2">
+                <Label>発売日（任意）</Label>
+                <Input
+                  type="date"
+                  value={releaseDate}
+                  onChange={(e) => setReleaseDate(e.target.value)}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label>開始日（任意）</Label>
+                <Input
+                  type="date"
+                  value={playStartDate}
+                  onChange={(e) => setPlayStartDate(e.target.value)}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label>クリア日（任意）</Label>
+                <Input
+                  type="date"
+                  value={clearDate}
+                  onChange={(e) => setClearDate(e.target.value)}
+                />
+              </div>
             </div>
 
+            {/* URL系 */}
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="grid gap-2">
+                <Label>サムネURL（任意）</Label>
+                <Input
+                  value={thumbnailUrl}
+                  onChange={(e) => setThumbnailUrl(e.target.value)}
+                  placeholder="https://..."
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label>ストアURL（任意）</Label>
+                <Input
+                  value={storeUrl}
+                  onChange={(e) => setStoreUrl(e.target.value)}
+                  placeholder="https://store.steampowered.com/..."
+                />
+              </div>
+            </div>
+
+            {/* メモ */}
             <div className="grid gap-2">
-              <Label htmlFor="note">メモ</Label>
+              <Label>メモ（任意）</Label>
               <Textarea
-                id="note"
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                // placeholder=""
+                value={memo}
+                onChange={(e) => setMemo(e.target.value)}
+                placeholder="例：2章まで進行。次はボス戦…"
               />
             </div>
 
-            <DialogFooter className="gap-2">
+            <DialogFooter className="mt-2">
               <Button
                 type="button"
-                variant="secondary"
+                variant="outline"
                 onClick={() => onOpenChange(false)}
               >
                 キャンセル
               </Button>
-              <Button type="submit" disabled={!title.trim()}>
-                {mode === "edit" ? "保存" : "追加"}
-              </Button>
+              <Button type="submit">保存</Button>
             </DialogFooter>
           </form>
         </DialogContent>

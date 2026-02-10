@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import {
   Dialog,
   DialogContent,
@@ -40,7 +41,8 @@ export function GameSearchDialog({ open, onOpenChange, onPick }) {
     setErrorText("");
   }, [open]);
 
-  const canSearch = useMemo(() => tab === "steam", [tab]);
+  // Steamと楽天は検索できる
+  const canSearch = useMemo(() => tab === "steam" || tab === "rakuten", [tab]);
 
   async function runSearch() {
     const term = normalize(q);
@@ -61,7 +63,18 @@ export function GameSearchDialog({ open, onOpenChange, onPick }) {
         return;
       }
 
-      // 楽天/Amazonは対応予定
+      if (tab === "rakuten") {
+        const res = await fetch(
+          `/api/search/rakuten?q=${encodeURIComponent(term)}`,
+          { cache: "no-store" },
+        );
+        if (!res.ok) throw new Error(await res.text());
+        const data = await res.json();
+        setItems(Array.isArray(data?.items) ? data.items : []);
+        return;
+      }
+
+      // Amazonは対応予定
       setItems([]);
     } catch (e) {
       setItems([]);
@@ -97,13 +110,10 @@ export function GameSearchDialog({ open, onOpenChange, onPick }) {
         <Tabs value={tab} onValueChange={setTab} className="w-full">
           <TabsList className="w-full">
             <TabsTrigger value="steam">Steam</TabsTrigger>
-            {/* <TabsTrigger value="rakuten" disabled>
-              楽天{" "}
-              <Badge variant="secondary" className="ml-2">
-                対応予定
-              </Badge>
-            </TabsTrigger>
-            <TabsTrigger value="amazon" disabled>
+            <TabsTrigger value="rakuten">楽天</TabsTrigger>
+
+            {/* Amazonは対応予定 */}
+            {/* <TabsTrigger value="amazon" disabled>
               Amazon{" "}
               <Badge variant="secondary" className="ml-2">
                 対応予定
@@ -152,10 +162,11 @@ export function GameSearchDialog({ open, onOpenChange, onPick }) {
             >
               <div className="flex items-center gap-3">
                 {it.imageUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
+                  <Image
                     src={it.imageUrl}
                     alt=""
+                    width={48}
+                    height={48}
                     className="h-12 w-12 shrink-0 rounded object-cover"
                   />
                 ) : (
@@ -164,11 +175,6 @@ export function GameSearchDialog({ open, onOpenChange, onPick }) {
 
                 <div className="min-w-0 flex-1">
                   <div className="truncate font-medium">{it.title}</div>
-                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                    <Badge variant="secondary">
-                      {it.source === "steam" ? "Steam" : it.source}
-                    </Badge>
-                  </div>
                 </div>
 
                 <Badge className="shrink-0" variant="outline">

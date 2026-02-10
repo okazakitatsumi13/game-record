@@ -435,11 +435,6 @@ export default function HomePageClient() {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-2xl font-bold leading-tight">ゲムレコ</h1>
-              {!user ? (
-                <Badge variant="secondary" className="shrink-0">
-                  ローカルモード
-                </Badge>
-              ) : null}
             </div>
             <p className="text-sm text-muted-foreground">
               ゲームのプレイ状況を記録・管理
@@ -492,7 +487,7 @@ export default function HomePageClient() {
               <Input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="タイトル/メモで検索…"
+                placeholder="リスト内検索"
               />
               <Badge variant="secondary" className="shrink-0">
                 表示 {filteredGames.length} 件

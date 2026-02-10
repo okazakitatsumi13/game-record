@@ -9,7 +9,7 @@ function norm(v) {
 function isProbablyGameSoftware(title) {
   const t = (title ?? "").toString();
 
-  // ❌ 明らかにソフトではないワード（強め）
+  // ❌ 明らかにソフトではないワード
   const NG = [
     "amiibo",
     "ぬいぐるみ",
@@ -69,7 +69,7 @@ function isProbablyGameSoftware(title) {
 
   if (NG.some((w) => t.toLowerCase().includes(w.toLowerCase()))) return false;
 
-  // POSが一つでも入っていればソフト寄り（任意）
+  // POSが一つでも入っていればソフト寄り
   if (POS.some((w) => t.toLowerCase().includes(w.toLowerCase()))) return true;
 
   // 何も引っかからないものは“保留”として true にしておく（落としすぎ防止）
@@ -147,7 +147,7 @@ export async function GET(req) {
   const res = await fetch(url.toString(), {
     headers: {
       accessKey,
-      referer: referrer, // ★403 REQUEST_CONTEXT_BODY_HTTP_REFERRER_MISSING 対策
+      referer: referrer,
       origin: referrer,
       "user-agent": "GameReco/1.0 (Next.js)",
     },

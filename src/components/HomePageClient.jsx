@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -122,6 +123,7 @@ export default function HomePageClient() {
 
   // ログイン後の「ローカル→DB自動移行」を1回だけ実行するため
   const migratedRef = useRef(false);
+  const prevUserRef = useRef(undefined);
 
   const storageMode = user ? "db" : "local";
 
@@ -135,6 +137,21 @@ export default function HomePageClient() {
 
     return () => sub.subscription.unsubscribe();
   }, [supabase]);
+
+  // ログイン/ログアウトのトースト（初回ロードでは出さない）
+  useEffect(() => {
+    // 初回だけスキップ
+    if (prevUserRef.current === undefined) {
+      prevUserRef.current = user;
+      return;
+    }
+
+    const prev = prevUserRef.current;
+    prevUserRef.current = user;
+
+    if (!prev && user) toast.success("ログインしました");
+    if (prev && !user) toast("ログアウトしました");
+  }, [user]);
 
   // ② データロード（未ログイン: local / ログイン: DB + 自動移行）
   useEffect(() => {
@@ -327,6 +344,7 @@ export default function HomePageClient() {
 
         const updated = rowToGame(data);
         setGames((prev) => prev.map((g) => (g.id === game.id ? updated : g)));
+        toast.success("更新しました");
       } else {
         const payload = gameToPayload(game, user.id);
 
@@ -340,10 +358,11 @@ export default function HomePageClient() {
 
         const created = rowToGame(data);
         setGames((prev) => [created, ...prev]);
+        toast.success("追加しました");
       }
     } catch (err) {
       console.error(err);
-      alert("保存に失敗しました");
+      toast.error("保存に失敗しました");
     }
   }
 
@@ -401,9 +420,10 @@ export default function HomePageClient() {
       if (error) throw error;
 
       setGames((prev) => prev.filter((g) => g.id !== id));
+      toast.success("削除しました");
     } catch (err) {
       console.error(err);
-      alert("削除に失敗しました");
+      toast.error("削除に失敗しました");
     }
   }
 

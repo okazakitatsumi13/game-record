@@ -428,21 +428,24 @@ export default function HomePageClient() {
   }
 
   return (
-    <main className="min-h-dvh p-6">
+    <main className="min-h-dvh p-4 sm:p-6">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
         {/* Header */}
-        <header className="flex items-center justify-between gap-3">
-          <div>
+        <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
             <div className="flex items-center gap-2">
               <h1 className="text-2xl font-bold leading-tight">ゲムレコ</h1>
             </div>
-            <p className="text-sm text-muted-foreground">
+
+            {/* スマホでは非表示 */}
+            <p className="hidden text-sm text-muted-foreground sm:block">
               ゲームのプレイ状況を記録・管理
               {!user ? "（ログインでクラウド保存＆自動移行）" : ""}
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          {/* スマホでは右寄せで揃える */}
+          <div className="self-end sm:self-auto">
             <AuthButtons />
           </div>
         </header>
@@ -485,27 +488,29 @@ export default function HomePageClient() {
           <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
             <div className="flex w-full flex-1 items-center gap-2">
               <Input
+                className="min-w-0 flex-1"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="リスト内検索"
               />
-              <Badge variant="secondary" className="shrink-0">
+              <Badge variant="secondary" className="shrink-0 whitespace-nowrap">
                 表示 {filteredGames.length} 件
               </Badge>
             </div>
 
+            {/* ボタンはスマホで縦 / sm以上で横 */}
             <div className="w-full md:w-70">
-              <div className="flex gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row">
                 <Button
                   variant="secondary"
-                  className="flex-1"
+                  className="w-full"
                   onClick={() => setIsSearchOpen(true)}
                 >
                   検索して追加
                 </Button>
 
                 <Button
-                  className="flex-1"
+                  className="w-full"
                   onClick={() => {
                     setDialogMode("create");
                     setEditingGame(null);

@@ -10,14 +10,15 @@ import { GAME_STATUSES } from "@/lib/constants";
 import { DeleteDialog } from "@/components/DeleteDialog";
 
 function statusLabel(value) {
-  return GAME_STATUSES.find((s) => s.value === value)?.label ?? value;
+  const found = GAME_STATUSES.find((s) => s.value === value);
+  return found?.label ?? value ?? "";
 }
 
-function statusBadgeClass(status) {
-  switch (status) {
+function statusBadgeClass(value) {
+  switch (value) {
     case "playing":
       return "bg-emerald-600 text-white hover:bg-emerald-600";
-    case "completed":
+    case "cleared":
       return "bg-blue-600 text-white hover:bg-blue-600";
     case "backlog":
       return "bg-slate-600 text-white hover:bg-slate-600";
@@ -61,25 +62,22 @@ export function GameCard({ game, onEdit, onDelete }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
 
   const release = formatDateYMD(game.releaseDate);
-  const started = formatDateYMD(game.playStartDate);
-  const completed = formatDateYMD(game.clearDate);
   const updated = formatUpdatedAt(game.updatedAt);
 
   const thumbnailUrl = (game.thumbnailUrl ?? "").trim();
   const storeUrl = (game.storeUrl ?? "").trim();
   const platform = (game.platform ?? "").trim();
 
-  const hasPlayDates = Boolean(started || completed);
-
   return (
     <>
       <Card className="p-4">
-        <div className="flex items-start justify-between gap-3">
+        {/* ✅ スマホは縦積み / sm以上は横並び */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           {/* 左：サムネ＋情報 */}
-          <div className="flex min-w-0 flex-1 gap-4">
+          <div className="flex min-w-0 flex-1 gap-3 sm:gap-4">
             <LinkOrSpan href={storeUrl || ""} className="shrink-0">
               {thumbnailUrl ? (
-                <div className="h-24 w-24 overflow-hidden rounded-md bg-muted p-1">
+                <div className="h-20 w-20 overflow-hidden rounded-md bg-muted p-1 sm:h-24 sm:w-24">
                   <Image
                     src={thumbnailUrl}
                     alt=""
@@ -91,15 +89,15 @@ export function GameCard({ game, onEdit, onDelete }) {
                   />
                 </div>
               ) : (
-                <div className="h-24 w-24 rounded-md bg-muted" />
+                <div className="h-20 w-20 rounded-md bg-muted sm:h-24 sm:w-24" />
               )}
             </LinkOrSpan>
 
             {/* テキスト */}
             <div className="min-w-0 flex-1 flex flex-col">
               {/* タイトル行 */}
-              <div className="flex min-w-0 items-center gap-2">
-                <div className="min-w-0 truncate text-base font-semibold">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <div className="min-w-0 truncate text-base font-semibold sm:text-lg">
                   <LinkOrSpan
                     href={storeUrl || ""}
                     className={storeUrl ? "hover:underline" : ""}
@@ -116,8 +114,8 @@ export function GameCard({ game, onEdit, onDelete }) {
                 ) : null}
               </div>
 
-              {/* ステータス + プレイ日時 */}
-              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+              {/* ステータス */}
+              <div className="mt-2 flex flex-wrap items-center gap-2">
                 <Badge
                   className={`inline-flex w-20 justify-center ${statusBadgeClass(
                     game.status,
@@ -125,28 +123,6 @@ export function GameCard({ game, onEdit, onDelete }) {
                 >
                   {statusLabel(game.status)}
                 </Badge>
-
-                {hasPlayDates ? (
-                  <div className="grid items-center text-xs text-muted-foreground tabular-nums grid-cols-[4.5rem_8rem_4.5rem_8rem]">
-                    <span
-                      className={`text-right ${started ? "" : "invisible"}`}
-                    >
-                      開始日：
-                    </span>
-                    <span className={`${started ? "" : "invisible"}`}>
-                      {started}
-                    </span>
-
-                    <span
-                      className={`text-right ${completed ? "" : "invisible"}`}
-                    >
-                      クリア日：
-                    </span>
-                    <span className={`${completed ? "" : "invisible"}`}>
-                      {completed}
-                    </span>
-                  </div>
-                ) : null}
               </div>
 
               {/* メモ */}
@@ -156,23 +132,25 @@ export function GameCard({ game, onEdit, onDelete }) {
                 </p>
               ) : null}
 
-              {/* 日付（最下段固定：左=発売日 / 右下=更新） */}
+              {/* 下段：左=発売日 / 右=更新 */}
               {release || updated ? (
-                <div className="mt-auto pt-2 flex items-end justify-between gap-4 text-xs text-muted-foreground">
+                <div className="mt-auto flex flex-col gap-1 pt-2 text-xs text-muted-foreground sm:flex-row sm:items-end sm:justify-between">
                   <div className="flex flex-wrap gap-x-4 gap-y-1">
                     {release ? <span>発売日：{release}</span> : null}
                   </div>
 
                   {updated ? (
-                    <span className="shrink-0">更新：{updated}</span>
+                    <span className="text-left sm:text-right">
+                      更新：{updated}
+                    </span>
                   ) : null}
                 </div>
               ) : null}
             </div>
           </div>
 
-          {/* 右：操作ボタン */}
-          <div className="flex shrink-0 items-center gap-2">
+          {/* 右：操作ボタン（スマホは右寄せ） */}
+          <div className="flex shrink-0 items-center gap-2 self-end sm:self-auto">
             <Button variant="outline" size="icon" onClick={() => onEdit(game)}>
               <Pencil className="h-4 w-4" />
               <span className="sr-only">編集</span>

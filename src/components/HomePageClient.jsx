@@ -431,7 +431,7 @@ export default function HomePageClient() {
     <main className="min-h-dvh p-4 sm:p-6">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
         {/* Header */}
-        <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <header className="flex items-center justify-between gap-3 sm:items-start">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <h1 className="text-2xl font-bold leading-tight">ゲムレコ</h1>
@@ -444,8 +444,7 @@ export default function HomePageClient() {
             </p>
           </div>
 
-          {/* スマホでは右寄せで揃える */}
-          <div className="self-end sm:self-auto">
+          <div className="shrink-0">
             <AuthButtons />
           </div>
         </header>
@@ -459,17 +458,24 @@ export default function HomePageClient() {
               onValueChange={setStatusFilter}
               className="w-full"
             >
-              <TabsList className="w-full justify-start overflow-x-auto overflow-y-hidden whitespace-nowrap">
-                <TabsTrigger value="all">すべて</TabsTrigger>
+              <TabsList className="grid! h-auto! w-full grid-cols-3 gap-1 sm:flex! sm:h-10 sm:justify-start">
+                <TabsTrigger value="all" className="w-full sm:w-auto">
+                  すべて
+                </TabsTrigger>
+
                 {GAME_STATUSES.map((s) => (
-                  <TabsTrigger key={s.value} value={s.value}>
+                  <TabsTrigger
+                    key={s.value}
+                    value={s.value}
+                    className="w-full sm:w-auto"
+                  >
                     {s.label}
                   </TabsTrigger>
                 ))}
               </TabsList>
             </Tabs>
 
-            <div className="w-full md:w-70">
+            <div className="w-full md:w-60 shrink-0">
               <Select value={sortKey} onValueChange={setSortKey}>
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="並び替え" />
@@ -498,19 +504,18 @@ export default function HomePageClient() {
               </Badge>
             </div>
 
-            {/* ボタンはスマホで縦 / sm以上で横 */}
-            <div className="w-full md:w-70">
-              <div className="flex flex-col gap-2 sm:flex-row">
+            <div className="w-full md:w-90 shrink-0">
+              <div className="flex flex-row gap-2">
                 <Button
                   variant="secondary"
-                  className="w-full"
+                  className="flex-1"
                   onClick={() => setIsSearchOpen(true)}
                 >
                   検索して追加
                 </Button>
 
                 <Button
-                  className="w-full"
+                  className="flex-1"
                   onClick={() => {
                     setDialogMode("create");
                     setEditingGame(null);

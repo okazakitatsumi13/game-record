@@ -5,7 +5,13 @@ import Image from "next/image";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Pencil, Trash2 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { GAME_STATUSES } from "@/lib/constants";
 import { DeleteDialog } from "@/components/DeleteDialog";
 
@@ -70,8 +76,8 @@ export function GameCard({ game, onEdit, onDelete }) {
 
   return (
     <>
-      <Card className="p-4">
-        {/* ✅ スマホは縦積み / sm以上は横並び */}
+      <Card className="w-full p-4">
+        {/* スマホは縦積み / sm以上は横並び */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           {/* 左：サムネ＋情報 */}
           <div className="flex min-w-0 flex-1 gap-3 sm:gap-4">
@@ -95,12 +101,12 @@ export function GameCard({ game, onEdit, onDelete }) {
 
             {/* テキスト */}
             <div className="min-w-0 flex-1 flex flex-col">
-              {/* タイトル行 */}
-              <div className="flex min-w-0 flex-wrap items-center gap-2">
-                <div className="min-w-0 truncate text-base font-semibold sm:text-lg">
+              {/* タイトル行（はみ出し対策：タイトルを確実に縮める） */}
+              <div className="flex min-w-0 items-center gap-2">
+                <div className="min-w-0 flex-1 basis-0 truncate text-base font-semibold sm:text-lg">
                   <LinkOrSpan
                     href={storeUrl || ""}
-                    className={storeUrl ? "hover:underline" : ""}
+                    className={storeUrl ? "block hover:underline" : "block"}
                   >
                     {game.title}
                   </LinkOrSpan>
@@ -114,15 +120,48 @@ export function GameCard({ game, onEdit, onDelete }) {
                 ) : null}
               </div>
 
-              {/* ステータス */}
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <Badge
-                  className={`inline-flex w-20 justify-center ${statusBadgeClass(
-                    game.status,
-                  )}`}
-                >
-                  {statusLabel(game.status)}
-                </Badge>
+              {/* ステータス + 操作（スマホは右側に…） */}
+              <div className="mt-2 flex items-center gap-2">
+                {/* 左：ステータス */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge
+                    className={`inline-flex w-20 justify-center ${statusBadgeClass(
+                      game.status,
+                    )}`}
+                  >
+                    {statusLabel(game.status)}
+                  </Badge>
+                </div>
+
+                {/* 右：スマホだけ…（プラットフォームの下に来る） */}
+                <div className="ml-auto sm:hidden">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        aria-label="メニュー"
+                      >
+                        <MoreHorizontal className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => onEdit(game)}>
+                        <Pencil className="mr-2 h-4 w-4" />
+                        編集
+                      </DropdownMenuItem>
+
+                      <DropdownMenuItem
+                        className="text-destructive focus:text-destructive"
+                        onClick={() => onDelete(game)}
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        削除
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
               </div>
 
               {/* メモ */}
@@ -140,28 +179,31 @@ export function GameCard({ game, onEdit, onDelete }) {
                   </div>
 
                   {updated ? (
-                    <span className="text-left sm:text-right">
-                      更新：{updated}
-                    </span>
+                    <span className="hidden sm:inline">更新：{updated}</span>
                   ) : null}
                 </div>
               ) : null}
             </div>
           </div>
 
-          {/* 右：操作ボタン（スマホは右寄せ） */}
-          <div className="flex shrink-0 items-center gap-2 self-end sm:self-auto">
-            <Button variant="outline" size="icon" onClick={() => onEdit(game)}>
-              <Pencil className="h-4 w-4" />
-              <span className="sr-only">編集</span>
-            </Button>
+          {/* 右：操作ボタン（PCのみ） */}
+          <div className="hidden sm:flex items-center gap-2">
             <Button
               variant="outline"
               size="icon"
-              onClick={() => setDeleteOpen(true)}
+              onClick={() => onEdit(game)}
+              aria-label="編集"
+            >
+              <Pencil className="h-4 w-4" />
+            </Button>
+
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => onDelete(game)}
+              aria-label="削除"
             >
               <Trash2 className="h-4 w-4" />
-              <span className="sr-only">削除</span>
             </Button>
           </div>
         </div>

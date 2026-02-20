@@ -102,7 +102,7 @@ export function GameSearchDialog({ open, onOpenChange, onPick }) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-180">
+      <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-xl max-h-[calc(100dvh-2rem)] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle>検索して追加</DialogTitle>
         </DialogHeader>
@@ -144,45 +144,47 @@ export function GameSearchDialog({ open, onOpenChange, onPick }) {
           <p className="text-sm text-destructive">{errorText}</p>
         ) : null}
 
-        <div className="grid gap-2">
-          {items.length === 0 && !loading ? (
-            <Card className="p-4">
-              <p className="text-sm text-muted-foreground">
-                検索結果がここに表示されます。
-              </p>
-            </Card>
-          ) : null}
+        <div className="mt-2 min-h-0 flex-1 overflow-y-auto">
+          <div className="grid gap-2 pr-1">
+            {items.length === 0 && !loading ? (
+              <Card className="p-4">
+                <p className="text-sm text-muted-foreground">
+                  検索結果がここに表示されます。
+                </p>
+              </Card>
+            ) : null}
 
-          {items.map((it) => (
-            <button
-              key={`${it.source ?? "x"}:${it.id ?? it.title}`}
-              type="button"
-              onClick={() => pick(it)}
-              className="w-full overflow-hidden rounded-lg border p-3 text-left hover:bg-muted/50"
-            >
-              <div className="flex items-center gap-3">
-                {it.imageUrl ? (
-                  <Image
-                    src={it.imageUrl}
-                    alt=""
-                    width={48}
-                    height={48}
-                    className="h-12 w-12 shrink-0 rounded object-cover"
-                  />
-                ) : (
-                  <div className="h-12 w-12 shrink-0 rounded bg-muted" />
-                )}
+            {items.map((it) => (
+              <button
+                key={`${it.source ?? "x"}:${it.id ?? it.title}`}
+                type="button"
+                onClick={() => pick(it)}
+                className="w-full overflow-hidden rounded-lg border p-3 text-left hover:bg-muted/50"
+              >
+                <div className="flex items-center gap-3">
+                  {it.imageUrl ? (
+                    <Image
+                      src={it.imageUrl}
+                      alt=""
+                      width={48}
+                      height={48}
+                      className="h-12 w-12 shrink-0 rounded object-cover"
+                    />
+                  ) : (
+                    <div className="h-12 w-12 shrink-0 rounded bg-muted" />
+                  )}
 
-                <div className="min-w-0 flex-1">
-                  <div className="truncate font-medium">{it.title}</div>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-medium">{it.title}</div>
+                  </div>
+
+                  <Badge className="shrink-0" variant="outline">
+                    追加
+                  </Badge>
                 </div>
-
-                <Badge className="shrink-0" variant="outline">
-                  追加
-                </Badge>
-              </div>
-            </button>
-          ))}
+              </button>
+            ))}
+          </div>
         </div>
       </DialogContent>
     </Dialog>

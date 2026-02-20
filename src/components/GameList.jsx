@@ -4,7 +4,7 @@ import { GameCard } from "@/components/GameCard";
 export function GameList({ games, onEdit, onDelete }) {
   if (!games.length) {
     return (
-      <section className="grid gap-3">
+      <section className="grid grid-cols-1 gap-3 min-w-0">
         <Card className="p-6">
           <div className="text-base font-medium">まだゲームがありません</div>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -16,7 +16,7 @@ export function GameList({ games, onEdit, onDelete }) {
   }
 
   return (
-    <section className="grid gap-3">
+    <section className="grid grid-cols-1 gap-3 min-w-0">
       {games.map((g) => (
         <GameCard key={g.id} game={g} onEdit={onEdit} onDelete={onDelete} />
       ))}

@@ -24,7 +24,7 @@ function statusBadgeClass(value) {
   switch (value) {
     case "playing":
       return "bg-emerald-600 text-white hover:bg-emerald-600";
-    case "cleared":
+    case "completed":
       return "bg-blue-600 text-white hover:bg-blue-600";
     case "backlog":
       return "bg-slate-600 text-white hover:bg-slate-600";
@@ -154,7 +154,7 @@ export function GameCard({ game, onEdit, onDelete }) {
 
                       <DropdownMenuItem
                         className="text-destructive focus:text-destructive"
-                        onClick={() => onDelete(game)}
+                        onClick={() => setDeleteOpen(true)}
                       >
                         <Trash2 className="mr-2 h-4 w-4" />
                         削除
@@ -200,7 +200,7 @@ export function GameCard({ game, onEdit, onDelete }) {
             <Button
               variant="outline"
               size="icon"
-              onClick={() => onDelete(game)}
+              onClick={() => setDeleteOpen(true)}
               aria-label="削除"
             >
               <Trash2 className="h-4 w-4" />

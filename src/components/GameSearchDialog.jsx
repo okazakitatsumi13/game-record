@@ -44,7 +44,14 @@ export function GameSearchDialog({ open, onOpenChange, onPick }) {
   // Steamと楽天は検索できる
   const canSearch = useMemo(() => tab === "steam" || tab === "rakuten", [tab]);
 
+  useEffect(() => {
+    // タブを変えたら「結果の表示」を一旦リセット（混ざらないように）
+    setItems([]);
+    setErrorText("");
+  }, [tab]);
+
   async function runSearch() {
+    if (loading) return;
     const term = normalize(q);
     if (!term) return;
 

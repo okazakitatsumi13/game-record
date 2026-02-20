@@ -46,6 +46,19 @@ export function GameDialog({
   const statusDefault = GAME_STATUSES[0]?.value ?? "backlog";
   const PLATFORM_NONE = "__none__";
 
+  const emptyForm = {
+    title: "",
+    status: statusDefault,
+    platformSelect: PLATFORM_NONE,
+    platformCustom: "",
+    memo: "",
+    releaseDate: "",
+    playStartDate: "",
+    clearDate: "",
+    thumbnailUrl: "",
+    storeUrl: "",
+  };
+
   const [title, setTitle] = useState("");
   const [status, setStatus] = useState(statusDefault);
   const [platformSelect, setPlatformSelect] = useState(PLATFORM_NONE);
@@ -169,7 +182,7 @@ export function GameDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-180">
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl">
           <DialogHeader>
             <DialogTitle>
               {mode === "edit" ? "ゲームを編集" : "ゲームを追加"}

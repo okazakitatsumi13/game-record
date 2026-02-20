@@ -100,7 +100,7 @@ function normalizeKeyForDedupe(game) {
 }
 
 export default function HomePageClient() {
-  const supabase = createSupabaseBrowser();
+  const supabase = useMemo(() => createSupabaseBrowser(), []);
 
   const [user, setUser] = useState(null);
 
@@ -120,6 +120,17 @@ export default function HomePageClient() {
   const [platformOptions, setPlatformOptions] = useState(DEFAULT_PLATFORMS);
 
   const [loading, setLoading] = useState(true);
+
+  const handleLogin = async () => {
+    await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: `${location.origin}/auth/callback` },
+    });
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+  };
 
   // ログイン後の「ローカル→DB自動移行」を1回だけ実行するため
   const migratedRef = useRef(false);
@@ -153,14 +164,55 @@ export default function HomePageClient() {
     if (prev && !user) toast("ログアウトしました");
   }, [user]);
 
-  // ② データロード（未ログイン: local / ログイン: DB + 自動移行）
+  // データロード
+  async function fetchDbGames(supabase) {
+    const { data, error } = await supabase
+      .from("games")
+      .select("*")
+      .order("updated_at", { ascending: false });
+
+    if (error) throw error;
+    return (data ?? []).map(rowToGame);
+  }
+
+  async function migrateLocalToDbOnce({ supabase, user }) {
+    const local = loadLocalGames();
+    if (local.length === 0) return;
+
+    // 既存を取って重複回避
+    const { data: dbMini, error: dbMiniErr } = await supabase
+      .from("games")
+      .select("id,title,platform,store_url");
+
+    if (dbMiniErr) throw dbMiniErr;
+
+    const exists = new Set(
+      (dbMini ?? []).map((r) => {
+        const t = (r.title ?? "").trim().toLowerCase();
+        const p = (r.platform ?? "").trim().toLowerCase();
+        const u = (r.store_url ?? "").trim();
+        return `${t}__${p}__${u}`;
+      }),
+    );
+
+    const payloads = local
+      .filter((g) => !exists.has(normalizeKeyForDedupe(g)))
+      .map((g) => gameToPayload(g, user.id));
+
+    if (payloads.length > 0) {
+      const { error: insErr } = await supabase.from("games").insert(payloads);
+      if (insErr) throw insErr;
+    }
+
+    clearLocalGames();
+  }
+
   useEffect(() => {
     const run = async () => {
       // --- 未ログイン: localStorage ---
       if (!user) {
-        migratedRef.current = false; // 次にログインした時に移行を許可
+        migratedRef.current = false;
         const local = loadLocalGames();
-
         setGames(local);
         setPlatformOptions(mergePlatformOptions(local));
         setLoading(false);
@@ -171,62 +223,19 @@ export default function HomePageClient() {
       setLoading(true);
 
       try {
-        // (A) ローカルデータがあれば自動移行（1回だけ）
+        // (A) ローカル→DB 移行（初回ログイン時だけ）
         if (!migratedRef.current) {
           migratedRef.current = true;
-
-          const local = loadLocalGames();
-          if (local.length > 0) {
-            // DB側の既存を取得して重複を避ける
-            const { data: dbMini, error: dbMiniErr } = await supabase
-              .from("games")
-              .select("id,title,platform,store_url");
-
-            if (dbMiniErr) throw dbMiniErr;
-
-            const exists = new Set(
-              (dbMini ?? []).map((r) => {
-                const t = (r.title ?? "").trim().toLowerCase();
-                const p = (r.platform ?? "").trim().toLowerCase();
-                const u = (r.store_url ?? "").trim();
-                return `${t}__${p}__${u}`;
-              }),
-            );
-
-            const payloads = [];
-            for (const g of local) {
-              const key = normalizeKeyForDedupe(g);
-              if (exists.has(key)) continue;
-
-              payloads.push(gameToPayload(g, user.id));
-            }
-
-            if (payloads.length > 0) {
-              const { error: insErr } = await supabase
-                .from("games")
-                .insert(payloads);
-              if (insErr) throw insErr;
-            }
-
-            // 移行成功したらローカルを消す（自動移行が理想なのでここは強気でOK）
-            clearLocalGames();
-          }
+          await migrateLocalToDbOnce({ supabase, user });
         }
 
-        // (B) DBから取得
-        const { data, error } = await supabase
-          .from("games")
-          .select("*")
-          .order("updated_at", { ascending: false });
-
-        if (error) throw error;
-
-        const mapped = (data ?? []).map(rowToGame);
+        // (B) DB取得
+        const mapped = await fetchDbGames(supabase);
         setGames(mapped);
         setPlatformOptions(mergePlatformOptions(mapped));
       } catch (e) {
         console.error(e);
-        alert("データの読み込みに失敗しました");
+        toast.error("データの読み込みに失敗しました");
       } finally {
         setLoading(false);
       }
@@ -244,48 +253,56 @@ export default function HomePageClient() {
   const filteredGames = useMemo(() => {
     const q = query.trim().toLowerCase();
 
-    return (
-      games
-        // ① ステータス絞り込み
-        .filter((g) => {
-          if (statusFilter === "all") return true;
-          return g.status === statusFilter;
-        })
-        // ② 検索（タイトル/メモ）
-        .filter((g) => {
-          if (!q) return true;
-          const title = (g.title ?? "").toLowerCase();
-          const memo = (g.memo ?? "").toLowerCase();
-          return title.includes(q) || memo.includes(q);
-        })
-        // ③ 並び替え
-        .sort((a, b) => {
-          if (sortKey === "updatedDesc")
-            return (b.updatedAt ?? 0) - (a.updatedAt ?? 0);
-          if (sortKey === "updatedAsc")
-            return (a.updatedAt ?? 0) - (b.updatedAt ?? 0);
+    // 1) ステータス絞り込み
+    let list = games.filter((g) => {
+      if (statusFilter === "all") return true;
+      return g.status === statusFilter;
+    });
 
-          if (sortKey === "releaseDesc") {
-            const at = releaseToTime(a.releaseDate);
-            const bt = releaseToTime(b.releaseDate);
-            if (at === null && bt === null) return 0;
-            if (at === null) return 1;
-            if (bt === null) return -1;
-            return bt - at;
-          }
+    // 2) 検索（タイトル/メモ）
+    if (q) {
+      list = list.filter((g) => {
+        const title = (g.title ?? "").toLowerCase();
+        const memo = (g.memo ?? "").toLowerCase();
+        return title.includes(q) || memo.includes(q);
+      });
+    }
 
-          if (sortKey === "releaseAsc") {
-            const at = releaseToTime(a.releaseDate);
-            const bt = releaseToTime(b.releaseDate);
-            if (at === null && bt === null) return 0;
-            if (at === null) return 1;
-            if (bt === null) return -1;
-            return at - bt;
-          }
+    // 3) 並び替え
+    const releaseToTime = (value) => {
+      if (!value) return null;
+      const t = new Date(value).getTime();
+      return Number.isNaN(t) ? null : t;
+    };
 
+    list = [...list].sort((a, b) => {
+      switch (sortKey) {
+        case "updatedDesc":
+          return (b.updatedAt ?? 0) - (a.updatedAt ?? 0);
+        case "updatedAsc":
+          return (a.updatedAt ?? 0) - (b.updatedAt ?? 0);
+        case "releaseDesc": {
+          const at = releaseToTime(a.releaseDate);
+          const bt = releaseToTime(b.releaseDate);
+          if (at === null && bt === null) return 0;
+          if (at === null) return 1;
+          if (bt === null) return -1;
+          return bt - at;
+        }
+        case "releaseAsc": {
+          const at = releaseToTime(a.releaseDate);
+          const bt = releaseToTime(b.releaseDate);
+          if (at === null && bt === null) return 0;
+          if (at === null) return 1;
+          if (bt === null) return -1;
+          return at - bt;
+        }
+        default:
           return 0;
-        })
-    );
+      }
+    });
+
+    return list;
   }, [games, statusFilter, query, sortKey]);
 
   // ③ 追加/編集（local or DB）
@@ -445,7 +462,11 @@ export default function HomePageClient() {
           </div>
 
           <div className="shrink-0">
-            <AuthButtons />
+            <AuthButtons
+              user={user}
+              onLogin={handleLogin}
+              onLogout={handleLogout}
+            />
           </div>
         </header>
 

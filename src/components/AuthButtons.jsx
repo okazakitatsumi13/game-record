@@ -1,37 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { createSupabaseBrowser } from "@/lib/supabase/client";
 
-export default function AuthButtons() {
-  const supabase = createSupabaseBrowser();
-  const [user, setUser] = useState(null);
-
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setUser(data.user ?? null));
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
-      setUser(session?.user ?? null);
-    });
-    return () => sub.subscription.unsubscribe();
-  }, [supabase]);
-
-  const signIn = async () => {
-    await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo: `${location.origin}/auth/callback` },
-    });
-  };
-
-  const signOut = async () => {
-    await supabase.auth.signOut();
-  };
-
+/**
+ * 認証ボタン（見た目担当）
+ * - user があれば「ログアウト」
+ * - なければ「Googleでログイン」
+ *
+ * 認証処理（Supabase）は親側で持つと、状態が二重にならずシンプル。
+ */
+export default function AuthButtons({ user, onLogin, onLogout }) {
   return user ? (
-    <Button variant="outline" onClick={signOut}>
+    <Button variant="outline" onClick={onLogout}>
       ログアウト
     </Button>
   ) : (
-    <Button onClick={signIn}>Googleでログイン</Button>
+    <Button onClick={onLogin}>Googleでログイン</Button>
   );
 }

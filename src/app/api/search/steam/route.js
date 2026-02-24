@@ -1,24 +1,31 @@
 export const runtime = "nodejs";
 
-function normalize(str) {
-  return (str ?? "").toString().trim();
+import { NextResponse } from "next/server";
+
+function sanitizeInputString(inputValue) {
+  if (inputValue === null || inputValue === undefined) {
+    return "";
+  }
+  return inputValue.toString().trim();
 }
 
 export async function GET(req) {
   const { searchParams } = new URL(req.url);
-  const q = normalize(searchParams.get("q"));
+  const searchQuery = sanitizeInputString(searchParams.get("q"));
 
-  if (!q) {
-    return Response.json({ items: [] });
+  if (!searchQuery) {
+    return NextResponse.json({ items: [] });
   }
 
+  // 非公式のストア検索API (例: Storefront API) を叩く例
   const url = new URL("https://store.steampowered.com/api/storesearch/");
-  url.searchParams.set("term", q);
+  url.searchParams.set("term", searchQuery);
   url.searchParams.set("l", "japanese");
   url.searchParams.set("cc", "jp");
-  url.searchParams.set("limit", "10");
+  url.searchParams.set("limit", "10"); // このAPIではlimitが効かない場合があるため、後で絞る
 
   const res = await fetch(url.toString(), {
+    // 検索系はキャッシュさせない方が無難
     cache: "no-store",
     headers: {
       // 一部環境で弾かれにくくするため
@@ -26,28 +33,45 @@ export async function GET(req) {
     },
   });
 
+  let apiResponseBody;
   if (!res.ok) {
-    const text = await res.text();
-    return new Response(text, { status: 500 });
+    try {
+      apiResponseBody = await res.json();
+    } catch (e) {
+      apiResponseBody = { raw: await res.text() };
+    }
+    return NextResponse.json(
+      { error: "Steam API error", status: res.status, body: apiResponseBody },
+      { status: 500 },
+    );
   }
 
-  const data = await res.json();
+  apiResponseBody = await res.json();
 
-  const items = (data?.items ?? []).map((it) => {
-    const appid = String(it.id ?? "");
-    const storeUrl = appid
-      ? `https://store.steampowered.com/app/${appid}/?l=japanese`
-      : "";
+  let steamSearchResults = [];
+  if (apiResponseBody && Array.isArray(apiResponseBody.items)) {
+    steamSearchResults = apiResponseBody.items.map((steamGameItem) => {
+      const { id, name, tiny_image } = steamGameItem;
+      const appIdString = id ? String(id) : "";
+      const storeUrl = appIdString
+        ? `https://store.steampowered.com/app/${appIdString}/?l=japanese`
+        : "";
 
-    return {
-      source: "steam",
-      id: appid,
-      title: normalize(it.name),
-      imageUrl: normalize(it.tiny_image),
-      url: storeUrl,
-      releaseDate: "",
-    };
-  });
+      return {
+        source: "steam",
+        id: appIdString,
+        title: sanitizeInputString(name || ""),
+        imageUrl: sanitizeInputString(tiny_image || ""),
+        url: storeUrl,
+        releaseDate: "", // このAPIでは発売日が取れないことが多い
+      };
+    });
+  }
 
-  return Response.json({ items });
+  // 表示件数を絞る
+  if (steamSearchResults.length > 10) {
+    steamSearchResults.length = 10;
+  }
+
+  return NextResponse.json({ items: steamSearchResults });
 }

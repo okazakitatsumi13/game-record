@@ -4,13 +4,13 @@ import { Button } from "@/components/ui/button";
 
 /**
  * 認証ボタン（見た目担当）
- * - user があれば「ログアウト」
+ * - currentUser があれば「ログアウト」
  * - なければ「Googleでログイン」
  *
  * 認証処理（Supabase）は親側で持つと、状態が二重にならずシンプル。
  */
-export default function AuthButtons({ user, onLogin, onLogout }) {
-  return user ? (
+export default function AuthButtons({ currentUser, onLogin, onLogout }) {
+  return currentUser ? (
     <Button variant="outline" onClick={onLogout}>
       ログアウト
     </Button>

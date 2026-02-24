@@ -1,42 +1,32 @@
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 
-// Nextのcookies()がPromiseになる環境に対応するため async にする
+// Next.jsの非同期仕様に合わせたServer Component用クライアント
 export async function createSupabaseServer() {
-  const cookieStore = await cookies(); // ★ await が必要
+  const cookieStore = await cookies();
 
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     {
       cookies: {
-        // getAll が無い環境があるので、get(name) で必要最低限読む方式にする
-        getAll() {
-          // cookieStore.getAll が存在する場合はそれを使う
-          if (typeof cookieStore.getAll === "function") {
-            return cookieStore.getAll();
-          }
-
-          // getAllが無い場合：Supabaseが実際に使う cookie 名だけ返す（最低限）
-          // ※ Supabase Auth が使う代表的なcookie名（プロジェクトにより接頭辞が付くことがある）
-          const names = [
-            "sb-access-token",
-            "sb-refresh-token",
-            "supabase-auth-token",
-          ];
-
-          const out = [];
-          for (const name of names) {
-            const v = cookieStore.get(name)?.value;
-            if (v) out.push({ name, value: v });
-          }
-          return out;
+        get(name) {
+          return cookieStore.get(name)?.value;
         },
-
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            cookieStore.set(name, value, options);
-          });
+        set(name, value, options) {
+          try {
+            cookieStore.set({ name, value, ...options });
+          } catch (error) {
+            // Server Componentから呼び出された際にCookieをsetしようとした場合のエラーを無視する。
+            // 状態の更新をミドルウェアやServer Actionsに任せている場合、ここで握りつぶすのが公式のプラクティス。
+          }
+        },
+        remove(name, options) {
+          try {
+            cookieStore.set({ name, value: "", ...options });
+          } catch (error) {
+            // setと同様に、Server Componentからの削除を試みた際のエラーを無視。
+          }
         },
       },
     },

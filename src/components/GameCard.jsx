@@ -15,25 +15,34 @@ import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { GAME_STATUSES } from "@/lib/constants";
 import { DeleteDialog } from "@/components/DeleteDialog";
 
-function statusLabel(value) {
-  const found = GAME_STATUSES.find((s) => s.value === value);
-  return found?.label ?? value ?? "";
+function getStatusDisplayName(statusValue) {
+  for (let i = 0; i < GAME_STATUSES.length; i++) {
+    if (GAME_STATUSES[i].value === statusValue) {
+      return GAME_STATUSES[i].label;
+    }
+  }
+
+  if (statusValue) {
+    return statusValue;
+  }
+  return "";
 }
 
-function statusBadgeClass(value) {
-  switch (value) {
-    case "playing":
-      return "bg-emerald-600 text-white hover:bg-emerald-600";
-    case "completed":
-      return "bg-blue-600 text-white hover:bg-blue-600";
-    case "backlog":
-      return "bg-slate-600 text-white hover:bg-slate-600";
-    case "wishlist":
-      return "bg-amber-500 text-white hover:bg-amber-500";
-    case "dropped":
-      return "bg-rose-600 text-white hover:bg-rose-600";
-    default:
-      return "";
+// --- ステータスバッジのスタイル定義 ---
+// ゲームの状態（クリア済み、積んでいる等）に応じてバッジの色を動的に切り替える
+function getStatusBadgeStyleClass(statusValue) {
+  if (statusValue === "playing") {
+    return "bg-emerald-600 text-white hover:bg-emerald-600";
+  } else if (statusValue === "completed") {
+    return "bg-blue-600 text-white hover:bg-blue-600";
+  } else if (statusValue === "backlog") {
+    return "bg-slate-600 text-white hover:bg-slate-600";
+  } else if (statusValue === "wishlist") {
+    return "bg-amber-500 text-white hover:bg-amber-500";
+  } else if (statusValue === "dropped") {
+    return "bg-rose-600 text-white hover:bg-rose-600";
+  } else {
+    return "";
   }
 }
 
@@ -67,19 +76,31 @@ function LinkOrSpan({ href, className, children }) {
 export function GameCard({ game, onEdit, onDelete }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
 
-  const release = formatDateYMD(game.releaseDate);
-  const updated = formatUpdatedAt(game.updatedAt);
+  const formattedReleaseDate = formatDateYMD(game.releaseDate);
+  const formattedLastUpdatedTime = formatUpdatedAt(game.updatedAt);
 
-  const thumbnailUrl = (game.thumbnailUrl ?? "").trim();
-  const storeUrl = (game.storeUrl ?? "").trim();
-  const platform = (game.platform ?? "").trim();
+  let thumbnailUrl = "";
+  if (game.thumbnailUrl) {
+    thumbnailUrl = game.thumbnailUrl.trim();
+  }
+
+  let storeUrl = "";
+  if (game.storeUrl) {
+    storeUrl = game.storeUrl.trim();
+  }
+
+  let platform = "";
+  if (game.platform) {
+    platform = game.platform.trim();
+  }
 
   return (
     <>
       <Card className="w-full p-4">
-        {/* スマホは縦積み / sm以上は横並び */}
+        {/* レスポンシブレイアウトの工夫:
+            スマートフォン等の狭い画面(デフォルト)では縦積み(flex-col)にし、
+            PC等の広い画面(sm:)では横並び(flex-row)にしてスペースを有効活用する */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          {/* 左：サムネ＋情報 */}
           <div className="flex min-w-0 flex-1 gap-3 sm:gap-4">
             <LinkOrSpan href={storeUrl || ""} className="shrink-0">
               {thumbnailUrl ? (
@@ -99,9 +120,7 @@ export function GameCard({ game, onEdit, onDelete }) {
               )}
             </LinkOrSpan>
 
-            {/* テキスト */}
             <div className="min-w-0 flex-1 flex flex-col">
-              {/* タイトル行（はみ出し対策：タイトルを確実に縮める） */}
               <div className="flex min-w-0 items-center gap-2">
                 <div className="min-w-0 flex-1 basis-0 truncate text-base font-semibold sm:text-lg">
                   <LinkOrSpan
@@ -112,7 +131,6 @@ export function GameCard({ game, onEdit, onDelete }) {
                   </LinkOrSpan>
                 </div>
 
-                {/* platform は未選択なら出さない */}
                 {platform ? (
                   <Badge variant="secondary" className="shrink-0">
                     {platform}
@@ -120,20 +138,17 @@ export function GameCard({ game, onEdit, onDelete }) {
                 ) : null}
               </div>
 
-              {/* ステータス + 操作（スマホは右側に…） */}
               <div className="mt-2 flex items-center gap-2">
-                {/* 左：ステータス */}
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge
-                    className={`inline-flex w-20 justify-center ${statusBadgeClass(
+                    className={`inline-flex w-20 justify-center ${getStatusBadgeStyleClass(
                       game.status,
                     )}`}
                   >
-                    {statusLabel(game.status)}
+                    {getStatusDisplayName(game.status)}
                   </Badge>
                 </div>
 
-                {/* 右：スマホだけ…（プラットフォームの下に来る） */}
                 <div className="ml-auto sm:hidden">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -164,29 +179,30 @@ export function GameCard({ game, onEdit, onDelete }) {
                 </div>
               </div>
 
-              {/* メモ */}
               {game.memo ? (
                 <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">
                   {game.memo}
                 </p>
               ) : null}
 
-              {/* 下段：左=発売日 / 右=更新 */}
-              {release || updated ? (
+              {formattedReleaseDate || formattedLastUpdatedTime ? (
                 <div className="mt-auto flex flex-col gap-1 pt-2 text-xs text-muted-foreground sm:flex-row sm:items-end sm:justify-between">
                   <div className="flex flex-wrap gap-x-4 gap-y-1">
-                    {release ? <span>発売日：{release}</span> : null}
+                    {formattedReleaseDate ? (
+                      <span>発売日：{formattedReleaseDate}</span>
+                    ) : null}
                   </div>
 
-                  {updated ? (
-                    <span className="hidden sm:inline">更新：{updated}</span>
+                  {formattedLastUpdatedTime ? (
+                    <span className="hidden sm:inline">
+                      更新：{formattedLastUpdatedTime}
+                    </span>
                   ) : null}
                 </div>
               ) : null}
             </div>
           </div>
 
-          {/* 右：操作ボタン（PCのみ） */}
           <div className="hidden sm:flex items-center gap-2">
             <Button
               variant="outline"

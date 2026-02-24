@@ -31,9 +31,11 @@ import { GameSearchDialog } from "@/components/GameSearchDialog";
  *  mode: "create" | "edit",
  *  initialGame?: any,
  *  onSubmit: (game:any, maybeNewPlatform?:string)=>void
- *  openSearchOnOpen?: boolean
  * }} props
  */
+const STATUS_DEFAULT = GAME_STATUSES[0]?.value ?? "backlog";
+const PLATFORM_NONE = "__none__";
+
 export function GameDialog({
   open,
   onOpenChange,
@@ -41,26 +43,9 @@ export function GameDialog({
   mode,
   initialGame,
   onSubmit,
-  openSearchOnOpen,
 }) {
-  const statusDefault = GAME_STATUSES[0]?.value ?? "backlog";
-  const PLATFORM_NONE = "__none__";
-
-  const emptyForm = {
-    title: "",
-    status: statusDefault,
-    platformSelect: PLATFORM_NONE,
-    platformCustom: "",
-    memo: "",
-    releaseDate: "",
-    playStartDate: "",
-    clearDate: "",
-    thumbnailUrl: "",
-    storeUrl: "",
-  };
-
   const [title, setTitle] = useState("");
-  const [status, setStatus] = useState(statusDefault);
+  const [status, setStatus] = useState(STATUS_DEFAULT);
   const [platformSelect, setPlatformSelect] = useState(PLATFORM_NONE);
   const [platformCustom, setPlatformCustom] = useState("");
 
@@ -73,31 +58,24 @@ export function GameDialog({
 
   const [searchOpen, setSearchOpen] = useState(false);
 
-  // createモードで、トップの「検索して追加」から開いた場合だけ自動で検索を開く
-  useEffect(() => {
-    if (!open) return;
+  let effectivePlatform = "";
+  if (platformCustom.trim() !== "") {
+    effectivePlatform = platformCustom.trim();
+  } else if (platformSelect !== PLATFORM_NONE) {
+    effectivePlatform = platformSelect;
+  }
 
-    if (mode === "create" && openSearchOnOpen) {
-      const t = setTimeout(() => setSearchOpen(true), 0);
-      return () => clearTimeout(t);
-    }
-  }, [open, mode, openSearchOnOpen]);
-
-  const effectivePlatform = useMemo(() => {
-    const custom = platformCustom.trim();
-    if (custom) return custom;
-    if (platformSelect === PLATFORM_NONE) return "";
-    return platformSelect;
-  }, [platformCustom, platformSelect]);
-
-  // open時に初期化：createでも initialGame があればそれを反映する（ここが今回の本質）
+  // --- フォームの初期化処理 ---
+  // ダイアログが開かれたタイミング(`open === true`)でフォームの値をセット。
+  // 新規追加（create）でも編集（edit）でも同じダイアログを使い回すため、
+  // `initialGame` プロパティの有無で初期値を出し分ける。
   useEffect(() => {
     if (!open) return;
 
     // initialGame があれば create/edit どちらでも反映
     if (initialGame) {
       setTitle(initialGame.title ?? "");
-      setStatus(initialGame.status ?? statusDefault);
+      setStatus(initialGame.status ?? STATUS_DEFAULT);
 
       setReleaseDate(initialGame.releaseDate ?? "");
       setThumbnailUrl(initialGame.thumbnailUrl ?? "");
@@ -106,6 +84,7 @@ export function GameDialog({
       setPlayStartDate(initialGame.playStartDate ?? "");
       setClearDate(initialGame.clearDate ?? "");
 
+      // プラットフォームが既存の選択肢(Select)にあるか、独自入力(Custom)かを判定して振り分け
       const p = (initialGame.platform ?? "").trim();
       if (!p) {
         setPlatformSelect(PLATFORM_NONE);
@@ -124,7 +103,7 @@ export function GameDialog({
 
     // initialGame が無いなら通常のcreate初期化
     setTitle("");
-    setStatus(statusDefault);
+    setStatus(STATUS_DEFAULT);
     setPlatformSelect(PLATFORM_NONE);
     setPlatformCustom("");
     setMemo("");
@@ -133,35 +112,49 @@ export function GameDialog({
     setStoreUrl("");
     setPlayStartDate("");
     setClearDate("");
-  }, [open, initialGame, statusDefault, platformOptions]);
+  }, [open, initialGame, platformOptions]);
 
-  function handlePickFromSearch(picked) {
-    if (picked?.title) setTitle(picked.title);
-    if (picked?.releaseDate) setReleaseDate(picked.releaseDate);
+  function applySearchResultToForm(pickedResult) {
+    if (pickedResult) {
+      if (pickedResult.title) {
+        setTitle(pickedResult.title);
+      }
+      if (pickedResult.releaseDate) {
+        setReleaseDate(pickedResult.releaseDate);
+      }
 
-    // Steam検索側のキー名揺れに両対応
-    const url = picked?.thumbnailUrl || picked?.coverUrl;
-    if (url) setThumbnailUrl(url);
+      // Steam検索側のキー名揺れに両対応
+      if (pickedResult.thumbnailUrl) {
+        setThumbnailUrl(pickedResult.thumbnailUrl);
+      } else if (pickedResult.coverUrl) {
+        setThumbnailUrl(pickedResult.coverUrl);
+      }
 
-    if (picked?.storeUrl) setStoreUrl(picked.storeUrl);
+      if (pickedResult.storeUrl) {
+        setStoreUrl(pickedResult.storeUrl);
+      }
+    }
   }
 
   function handleSubmit(e) {
     e.preventDefault();
 
-    const t = title.trim();
-    if (!t) return;
+    const trimmedTitle = title.trim();
+    if (!trimmedTitle) return;
 
     const maybeNewPlatform =
       effectivePlatform && !platformOptions.includes(effectivePlatform)
         ? effectivePlatform
         : undefined;
 
+    // --- Payload（送信データ）の整形 ---
+    // 親コンポーネント（HomePageClient）へ渡すために、フォームの各状態を
+    // 一つのオブジェクトにまとめる。未入力の項目は明示的に空文字("")を設定する。
     const payload = {
-      // edit時は id を保持（DB update のため）
+      // 編集モードの場合のみ、既存のデータの id を含める（DBのUPDATEの目印として必要）
       ...(mode === "edit" && initialGame?.id ? { id: initialGame.id } : {}),
 
-      title: t,
+      title: trimmedTitle,
       platform: effectivePlatform,
       status,
 
@@ -190,7 +183,6 @@ export function GameDialog({
           </DialogHeader>
 
           <form onSubmit={handleSubmit} className="grid gap-4">
-            {/* タイトル */}
             <div className="grid gap-2">
               <div className="flex items-center justify-between gap-2">
                 <Label htmlFor="title">タイトル（必須）</Label>
@@ -207,15 +199,13 @@ export function GameDialog({
                 id="title"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="例：ELDEN RING"
                 required
               />
             </div>
 
-            {/* ステータス / プラットフォーム */}
             <div className="grid gap-3 md:grid-cols-2">
               <div className="grid gap-2">
-                <Label>ステータス（必須）</Label>
+                <Label>ステータス</Label>
                 <Select value={status} onValueChange={setStatus}>
                   <SelectTrigger>
                     <SelectValue placeholder="ステータスを選択" />
@@ -231,7 +221,7 @@ export function GameDialog({
               </div>
 
               <div className="grid gap-2">
-                <Label>プラットフォーム（任意）</Label>
+                <Label>プラットフォーム</Label>
                 <Select
                   value={platformSelect}
                   onValueChange={setPlatformSelect}
@@ -258,10 +248,9 @@ export function GameDialog({
               </div>
             </div>
 
-            {/* 日付 */}
             <div className="grid gap-3 md:grid-cols-3">
               <div className="grid gap-2">
-                <Label>発売日（任意）</Label>
+                <Label>発売日</Label>
                 <Input
                   type="date"
                   value={releaseDate}
@@ -269,7 +258,7 @@ export function GameDialog({
                 />
               </div>
               <div className="grid gap-2">
-                <Label>開始日（任意）</Label>
+                <Label>開始日</Label>
                 <Input
                   type="date"
                   value={playStartDate}
@@ -277,7 +266,7 @@ export function GameDialog({
                 />
               </div>
               <div className="grid gap-2">
-                <Label>クリア日（任意）</Label>
+                <Label>クリア日</Label>
                 <Input
                   type="date"
                   value={clearDate}
@@ -286,10 +275,9 @@ export function GameDialog({
               </div>
             </div>
 
-            {/* URL系 */}
             <div className="grid gap-3 md:grid-cols-2">
               <div className="grid gap-2">
-                <Label>サムネURL（任意）</Label>
+                <Label>サムネURL</Label>
                 <Input
                   value={thumbnailUrl}
                   onChange={(e) => setThumbnailUrl(e.target.value)}
@@ -297,7 +285,7 @@ export function GameDialog({
                 />
               </div>
               <div className="grid gap-2">
-                <Label>ストアURL（任意）</Label>
+                <Label>ストアURL</Label>
                 <Input
                   value={storeUrl}
                   onChange={(e) => setStoreUrl(e.target.value)}
@@ -306,13 +294,11 @@ export function GameDialog({
               </div>
             </div>
 
-            {/* メモ */}
             <div className="grid gap-2">
-              <Label>メモ（任意）</Label>
+              <Label>メモ</Label>
               <Textarea
                 value={memo}
                 onChange={(e) => setMemo(e.target.value)}
-                placeholder="例：2章まで進行。次はボス戦…"
               />
             </div>
 
@@ -333,7 +319,7 @@ export function GameDialog({
       <GameSearchDialog
         open={searchOpen}
         onOpenChange={setSearchOpen}
-        onPick={handlePickFromSearch}
+        onPick={applySearchResultToForm}
       />
     </>
   );

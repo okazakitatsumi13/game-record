@@ -7,7 +7,11 @@ function isBrowser() {
 function safeJsonParse(value, fallback) {
   try {
     const parsed = JSON.parse(value);
-    return parsed ?? fallback;
+    if (parsed) {
+      return parsed;
+    } else {
+      return fallback;
+    }
   } catch {
     return fallback;
   }
@@ -15,15 +19,23 @@ function safeJsonParse(value, fallback) {
 
 export function loadLocalGames() {
   if (!isBrowser()) return [];
-  const raw = localStorage.getItem(KEY);
-  if (!raw) return [];
-  const data = safeJsonParse(raw, []);
-  return Array.isArray(data) ? data : [];
+  const rawData = localStorage.getItem(KEY);
+  if (!rawData) return [];
+  const parsedData = safeJsonParse(rawData, []);
+  if (Array.isArray(parsedData)) {
+    return parsedData;
+  } else {
+    return [];
+  }
 }
 
 export function saveLocalGames(games) {
   if (!isBrowser()) return;
-  localStorage.setItem(KEY, JSON.stringify(games ?? []));
+  if (games) {
+    localStorage.setItem(KEY, JSON.stringify(games));
+  } else {
+    localStorage.setItem(KEY, JSON.stringify([]));
+  }
 }
 
 export function clearLocalGames() {

@@ -10,6 +10,9 @@ function sanitizeInputString(inputValue) {
 }
 
 export async function GET(req) {
+  // --- URLパラメータの取得とバリデーション ---
+  // フロントエンドから送られてきた検索キーワード("q")を抽出する。
+  // 送信されていない、もしくは空文字の場合は早期リターンで無駄なAPI通信を防ぐ。
   const { searchParams } = new URL(req.url);
   const searchQuery = sanitizeInputString(searchParams.get("q"));
 
@@ -17,7 +20,9 @@ export async function GET(req) {
     return NextResponse.json({ items: [] });
   }
 
-  // 非公式のストア検索API (例: Storefront API) を叩く例
+  // --- 外部API (Steam) へのリクエスト処理 ---
+  // 非公式のストア検索API (Storefront API) を叩くにあたり、
+  // 英語圏のAPIから日本語の結果を得るために "l=japanese" 等のパラメータを付与している。
   const url = new URL("https://store.steampowered.com/api/storesearch/");
   url.searchParams.set("term", searchQuery);
   url.searchParams.set("l", "japanese");
@@ -35,6 +40,9 @@ export async function GET(req) {
 
   let apiResponseBody;
   if (!res.ok) {
+    // --- エラーハンドリング ---
+    // 外部APIのエラー（サーバーダウン、レートリミット等）でNext.jsアプリ全体がクラッシュしないよう、
+    // ここでエラーレスポンスを正しくキャッチし、フロントエンド側に500エラーとして安全に中継する。
     try {
       apiResponseBody = await res.json();
     } catch (e) {
@@ -48,6 +56,9 @@ export async function GET(req) {
 
   apiResponseBody = await res.json();
 
+  // --- フロントエンド向けへのデータ整形 (正規化) ---
+  // 外部APIの生データをそのままフロントエンドに渡すと、APIの仕様変更時にフロント全体が壊れるリスクがある。
+  // そのため、ここでアプリ内で使いやすい統一されたオブジェクトにマッピング（変換）しておく。
   let steamSearchResults = [];
   if (apiResponseBody && Array.isArray(apiResponseBody.items)) {
     steamSearchResults = apiResponseBody.items.map((steamGameItem) => {

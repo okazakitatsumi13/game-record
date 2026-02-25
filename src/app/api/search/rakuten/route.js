@@ -10,13 +10,15 @@ function sanitizeInputString(inputValue) {
   return inputValue.toString().trim();
 }
 
-// --- 関連度スコアリングエンジン ---
+// --- 高度なフィルタリング：ノイズ除外と関連度スコアリング ---
 
-// 正規表現による高速なキーワード検知（大文字小文字を区別しない i フラグ）
+// 楽天APIは「ゲームの書籍」「周辺機器」などが大量に混ざるため、
+// コンパイルされた正規表現 (RegExp) を用いて高速かつ網羅的にマッチングしてスコアを増減させる。
 const NG_REGEX =
   /本体|コントローラ|amiibo|フィギュア|サウンドトラック|サントラ|ぬいぐるみ|攻略本|保護フィルム/i;
 const EDITION_BUNDLE_REGEX = /エディション.*同梱/i; // 特例: エディション同梱版はNG
 
+// プラットフォームや通常版を優遇するための加点ルール
 const HARDWARE_BONUS_RULES = [
   { pattern: /switch|ps5/i, score: 30 },
   { pattern: /ps4|xbox/i, score: 20 },
@@ -176,22 +178,25 @@ export async function GET(req) {
     });
   }
 
-  // 関連度スコアリング -> NG除外（スコア0未満） -> スコア順ソート -> 最大12件表示（メソッドチェーン）
+  // --- データパイプライン (Method Chaining) ---
+  // APIから返ってきた生のデータ群に対し、
+  // 1. Array.map: 事前に計算した「関連度スコア」を各オブジェクトに付与
+  // 2. Array.filter: スコアがマイナスのもの（除外対象のノイズ等）を足切り
+  // 3. Array.sort: スコアが高い順（関連度順）に並び替え
+  // 4. Array.slice: 画面表示用として上位12件のみに絞り込む
+  // 5. Array.map: フロントエンドへ送る前に、計算役目を終えた内部スコアキーを削除して綺麗にする
+  // これらの一連のデータ加工を、一時変数を作らずスマートに繋げて行う（モダンJavaScriptの手法）。
   const filteredItems = rakutenItems
     .map((item) => {
-      // 事前に各アイテムのスコアを計算してオブジェクトに付与
       const score = computeRelevanceScore(item.title, searchQuery);
       return { ...item, _relevanceScore: score };
     })
-    // 致命的なNGが含まれるもの（スコアがマイナス）は足切り
     .filter((item) => item._relevanceScore >= -1000)
     .sort((a, b) => {
-      // 関連度スコアが高い順（降順）。同じスコアなら元の順序（売上順）。
       return b._relevanceScore - a._relevanceScore;
     })
     .slice(0, 12)
     .map((item) => {
-      // フロントエンドへ返す前に、内部計算用のスコアキーを削除して綺麗にする
       const { _relevanceScore, ...cleanItem } = item;
       return cleanItem;
     });

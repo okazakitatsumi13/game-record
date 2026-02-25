@@ -541,7 +541,7 @@ export default function HomePageClient() {
 
           <div className="shrink-0">
             <AuthButtons
-              user={currentUser}
+              currentUser={currentUser}
               onLogin={handleLogin}
               onLogout={handleLogout}
             />

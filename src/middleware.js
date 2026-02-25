@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
 export async function middleware(request) {
-  // requestのheadersを新しいレスポンスへ引き継ぐ初期化
+  // --- セッション（Cookie）の同期とリフレッシュ ---
+  // Next.jsとSupabaseの連携において、ミドルウェアの最大の役割は「ユーザーの認証状態（Cookie）を最新に保つ」こと。
+  // request(入ってくる情報)のheadersをレスポンス(ブラウザに返す情報)へ引き継ぐための初期化。
   let supabaseResponse = NextResponse.next({
     request: {
       headers: request.headers,
@@ -19,12 +21,12 @@ export async function middleware(request) {
           return request.cookies.getAll();
         },
         setAll(cookiesToSet) {
-          // セットされたCookieを、まずリクエスト自身に反映（後続処理用）
+          // セットされた新しいCookie情報を、いま現在処理しているRequestオブジェクト自身に反映する（後続の処理で最新状態を参照させるため）
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value),
           );
 
-          // そして新しく返すレスポンス（ブラウザに送る用）に反映
+          // その後、ブラウザ側に返すための新しいResponseオブジェクトを作り直し、変更されたCookieを焼き直す（バケツリレーの完了）
           supabaseResponse = NextResponse.next({
             request,
           });
@@ -36,8 +38,9 @@ export async function middleware(request) {
     },
   );
 
-  // トークンのリフレッシュやOAuthの同期など、セッションを最新状態にするために一度getUserを叩く
-  // ※この過程でCookieが新しくセットされる可能性があり、それが setAll で捕捉されて supabaseResponse に載る
+  // 状態を最新にするため、一度 getUser を叩く。
+  // ここでアクセストークンの期限切れ等があれば自動的にリフレッシュ通信が走り、
+  // 上記の `setAll` 関数がフックされて、ブラウザへ新しいCookieがセットされる仕組みになっている。
   await supabase.auth.getUser();
 
   return supabaseResponse;

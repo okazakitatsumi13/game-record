@@ -1,36 +1,69 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# ゲムレコ (Game Record App)
 
-## Getting Started
+Next.js (App Router) と Supabase を用いて構築した、ゲームプレイ状況管理アプリケーションです。
 
-First, run the development server:
+> **Note:**
+> 本リポジトリは**ポートフォリオ用の公開ソースコード**です。開発者の技術理解度や設計意図を示すため、UIコンポーネントやAPIルート、認証処理（Middleware含む）の各種コード内には、実装の意図や技術的アプローチを説明する解説コメントを記述しています。
+
+## 🌐 アプリケーション概要
+
+気になるゲームや、既にプレイしたゲームの進行状況（「未プレイ」「プレイ中」「クリア済」等）や所有プラットフォームを記録・管理できるWebアプリケーションです。
+
+- **ローカル＆DBのシームレスな体験**: 未ログイン状態でも `localStorage` を利用して即座にアプリを試すことができます。Googleアカウントでログインすると、ローカルに保存していたデータが自動的にSupabaseへ入り、以降はクラウド上で複数端末から同期・管理可能になります。
+
+- **外部API連携によるゲーム検索**: Steam API（非公式） および 楽天BooksGame API と連携。タイトル検索からゲーム情報を簡単に取得し、リストへ追加できます。
+
+- **レスポンシブデザイン**: PC、スマートフォンなど、あらゆるデバイスで快適に操作できるよう、Tailwind CSSを活用したレスポンシブなレイアウトとコンポーネント設計にしています。
+
+- **AI Assistant (Antigravity) の活用**: 本プロジェクトにおける高度なデータベース・認証（SupabaseおよびMiddleware）の設計や実装、一部アルゴリズムのリファクタリングは、開発支援AIであるAntigravityを活用して実現しています。
+
+## 技術スタック
+
+- **Framework**: Next.js (App Router)
+- **UI & Styling**: React, Tailwind CSS, shadcn/ui, Lucide React
+- **Backend / Database / Auth**: Supabase (@supabase/ssr), PostgreSQL
+- **Data Fetching**: Fetch API
+
+## 主な工夫点
+
+### 1. 検索フィルタリングと関連度スコアリングエンジン
+
+提供される外部API（楽天API）の検索結果には、「ゲーム周辺機器」「攻略本」「サウンドトラック」などのノイズが混入します。これを解決するため、バックエンド側 (`src/app/api/search/rakuten/route.js`) に独自の関連度スコアリングエンジンを実装しました。
+特定NGワードの除外、検索キーワードとタイトルの近接度、タイトル長などを計算し、純粋な「ゲームソフト」が検索結果の上位へソートされるように構築しています。
+
+### 2. Next.js App Routerにおけるセッション同期
+
+Supabase Authを用いた認証において、サーバー側とクライアント側で確実にセッション（ログイン状態）を同期させるため、公式ベストプラクティスに則った実装を行っています。
+`src/middleware.js` にて、ユーザーリクエスト内のCookieを読み取り、必要に応じてトークンをリフレッシュした上で、レスポンスヘッダへ適切にCookieを書き戻す（バケツリレー）処理を記述しています。また、開発環境と本番環境を考慮した、セキュアなOAuthコールバック機能を追加しています。
+
+### 3.安全なUI/UX設計とデータ保護
+
+- **API通信の競合防止**: 検索フォームにて連続で文字入力・検索が行われた際、古い通信結果が画面を上書きしないよう `AbortController` を使用して直前のフェッチをキャンセルする仕組みを導入。
+- **重複登録防止バリデーション**: 保存処理時に既存の保存リストと「タイトル＋プラットフォーム」で比較を行い、同一ゲームの二重登録を防いでいます。
+- **安全なデータ復元**: `localStorage` からのデータ読み込み時に `try-catch` によるパース処理を行い、万が一の不正なデータ混入時にもアプリ全体がクラッシュしないようにしています。
+
+## ローカルでの起動方法
 
 ```bash
+# パッケージのインストール
+npm install
+
+# 開発サーバーの起動
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+ブラウザで `http://localhost:3000` にアクセスして動作を確認できます。
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+### ※環境変数 (.env.local) について
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+ローカルで環境を立ち上げて完全に動作させる場合（ログインやデータベース保存、外部API検索を利用する場合）、プロジェクトルートに以下の環境変数をご用意いただく必要があります。
 
-## Learn More
+```env
+NEXT_PUBLIC_SUPABASE_URL="あなたのSupabaseプロジェクトURL"
+NEXT_PUBLIC_SUPABASE_ANON_KEY="あなたのSupabase_Anon_Key"
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+# 楽天API連携用
+RAKUTEN_APP_ID="事前取得した楽天デベロッパーのアプリID"
+RAKUTEN_ACCESS_KEY="事前取得した楽天デベロッパーのアクセスキー"
+RAKUTEN_REFERRER="楽天APIリクエスト元のリファラー(例: http://localhost:3000)"
+```

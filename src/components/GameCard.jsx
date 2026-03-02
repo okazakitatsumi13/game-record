@@ -46,11 +46,6 @@ function getStatusBadgeStyleClass(statusValue) {
   }
 }
 
-function formatDateYMD(value) {
-  if (!value) return null;
-  return value; // 既に "YYYY-MM-DD" を想定
-}
-
 function formatUpdatedAt(ms) {
   if (!ms) return null;
   const d = new Date(ms);
@@ -76,7 +71,7 @@ function LinkOrSpan({ href, className, children }) {
 export function GameCard({ game, onEdit, onDelete }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
 
-  const formattedReleaseDate = formatDateYMD(game.releaseDate);
+  const formattedReleaseDate = game.releaseDate || null;
   const formattedLastUpdatedTime = formatUpdatedAt(game.updatedAt);
 
   let thumbnailUrl = "";

@@ -11,23 +11,12 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-/**
- * @param {{
- *  open: boolean,
- *  onOpenChange: (open:boolean)=>void,
- *  title: string,
- *  onConfirm: ()=> (void | Promise<void>)
- * }} props
- */
 export function DeleteDialog({ open, onOpenChange, title, onConfirm }) {
   const handleConfirm = async (e) => {
-    // form 送信などの事故を防ぐ
     e?.preventDefault?.();
-
     try {
       await onConfirm?.();
     } finally {
-      // 成功/失敗に関わらず、ダイアログは閉じる
       onOpenChange(false);
     }
   };

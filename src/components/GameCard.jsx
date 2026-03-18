@@ -12,39 +12,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
-import { GAME_STATUSES } from "@/lib/constants";
+import { STATUS_MAP } from "@/lib/constants";
 import { DeleteDialog } from "@/components/DeleteDialog";
-
-function getStatusDisplayName(statusValue) {
-  for (let i = 0; i < GAME_STATUSES.length; i++) {
-    if (GAME_STATUSES[i].value === statusValue) {
-      return GAME_STATUSES[i].label;
-    }
-  }
-
-  if (statusValue) {
-    return statusValue;
-  }
-  return "";
-}
-
-// --- ステータスバッジのスタイル定義 ---
-// ゲームの状態（クリア済み、積んでいる等）に応じてバッジの色を動的に切り替える
-function getStatusBadgeStyleClass(statusValue) {
-  if (statusValue === "playing") {
-    return "bg-emerald-600 text-white hover:bg-emerald-600";
-  } else if (statusValue === "completed") {
-    return "bg-blue-600 text-white hover:bg-blue-600";
-  } else if (statusValue === "backlog") {
-    return "bg-slate-600 text-white hover:bg-slate-600";
-  } else if (statusValue === "wishlist") {
-    return "bg-amber-500 text-white hover:bg-amber-500";
-  } else if (statusValue === "dropped") {
-    return "bg-rose-600 text-white hover:bg-rose-600";
-  } else {
-    return "";
-  }
-}
 
 function formatUpdatedAt(ms) {
   if (!ms) return null;
@@ -71,37 +40,26 @@ function LinkOrSpan({ href, className, children }) {
 export function GameCard({ game, onEdit, onDelete }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
 
-  const formattedReleaseDate = game.releaseDate || null;
-  const formattedLastUpdatedTime = formatUpdatedAt(game.updatedAt);
+  const releaseDate = game.releaseDate || null;
+  const updatedAtStr = formatUpdatedAt(game.updatedAt);
+  const thumbnail = game.thumbnailUrl?.trim() || "";
+  const storeUrl = game.storeUrl?.trim() || "";
+  const platform = game.platform?.trim() || "";
 
-  let thumbnailUrl = "";
-  if (game.thumbnailUrl) {
-    thumbnailUrl = game.thumbnailUrl.trim();
-  }
-
-  let storeUrl = "";
-  if (game.storeUrl) {
-    storeUrl = game.storeUrl.trim();
-  }
-
-  let platform = "";
-  if (game.platform) {
-    platform = game.platform.trim();
-  }
+  const statusInfo = STATUS_MAP[game.status];
+  const statusLabel = statusInfo?.label ?? game.status ?? "";
+  const statusBadgeClass = statusInfo?.badgeClass ?? "";
 
   return (
     <>
       <Card className="w-full p-4">
-        {/* レスポンシブレイアウトの工夫:
-            スマートフォン等の狭い画面(デフォルト)では縦積み(flex-col)にし、
-            PC等の広い画面(sm:)では横並び(flex-row)にしてスペースを有効活用する */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex min-w-0 flex-1 gap-3 sm:gap-4">
-            <LinkOrSpan href={storeUrl || ""} className="shrink-0">
-              {thumbnailUrl ? (
+            <LinkOrSpan href={storeUrl} className="shrink-0">
+              {thumbnail ? (
                 <div className="h-20 w-20 overflow-hidden rounded-md bg-muted p-1 sm:h-24 sm:w-24">
                   <Image
-                    src={thumbnailUrl}
+                    src={thumbnail}
                     alt=""
                     width={96}
                     height={96}
@@ -119,31 +77,28 @@ export function GameCard({ game, onEdit, onDelete }) {
               <div className="flex min-w-0 items-center gap-2">
                 <div className="min-w-0 flex-1 basis-0 truncate text-base font-semibold sm:text-lg">
                   <LinkOrSpan
-                    href={storeUrl || ""}
+                    href={storeUrl}
                     className={storeUrl ? "block hover:underline" : "block"}
                   >
                     {game.title}
                   </LinkOrSpan>
                 </div>
 
-                {platform ? (
+                {platform && (
                   <Badge variant="secondary" className="shrink-0">
                     {platform}
                   </Badge>
-                ) : null}
+                )}
               </div>
 
               <div className="mt-2 flex items-center gap-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge
-                    className={`inline-flex w-20 justify-center ${getStatusBadgeStyleClass(
-                      game.status,
-                    )}`}
-                  >
-                    {getStatusDisplayName(game.status)}
-                  </Badge>
-                </div>
+                <Badge
+                  className={`inline-flex w-20 justify-center ${statusBadgeClass}`}
+                >
+                  {statusLabel}
+                </Badge>
 
+                {/* モバイル用メニュー */}
                 <div className="ml-auto sm:hidden">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -174,30 +129,29 @@ export function GameCard({ game, onEdit, onDelete }) {
                 </div>
               </div>
 
-              {game.memo ? (
+              {game.memo && (
                 <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">
                   {game.memo}
                 </p>
-              ) : null}
+              )}
 
-              {formattedReleaseDate || formattedLastUpdatedTime ? (
+              {(releaseDate || updatedAtStr) && (
                 <div className="mt-auto flex flex-col gap-1 pt-2 text-xs text-muted-foreground sm:flex-row sm:items-end sm:justify-between">
                   <div className="flex flex-wrap gap-x-4 gap-y-1">
-                    {formattedReleaseDate ? (
-                      <span>発売日：{formattedReleaseDate}</span>
-                    ) : null}
+                    {releaseDate && <span>発売日：{releaseDate}</span>}
                   </div>
 
-                  {formattedLastUpdatedTime ? (
+                  {updatedAtStr && (
                     <span className="hidden sm:inline">
-                      更新：{formattedLastUpdatedTime}
+                      更新：{updatedAtStr}
                     </span>
-                  ) : null}
+                  )}
                 </div>
-              ) : null}
+              )}
             </div>
           </div>
 
+          {/* PC 用ボタン */}
           <div className="hidden sm:flex items-center gap-2">
             <Button
               variant="outline"

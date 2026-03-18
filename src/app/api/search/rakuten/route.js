@@ -1,69 +1,45 @@
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
+import { sanitizeInputString } from "@/lib/sanitize";
 
-// 値を安全な文字列にする（null/undefined時は空文字）
-function sanitizeInputString(inputValue) {
-  if (inputValue === null || inputValue === undefined) {
-    return "";
-  }
-  return inputValue.toString().trim();
-}
-
-// --- 高度なフィルタリング：ノイズ除外と関連度スコアリング ---
-
-// 楽天APIは「ゲームの書籍」「周辺機器」などが大量に混ざるため、
-// コンパイルされた正規表現 (RegExp) を用いて高速かつ網羅的にマッチングしてスコアを増減させる。
+// --- ノイズ除外用正規表現 ---
 const NG_REGEX =
   /本体|コントローラ|amiibo|フィギュア|サウンドトラック|サントラ|ぬいぐるみ|攻略本|保護フィルム/i;
-const EDITION_BUNDLE_REGEX = /エディション.*同梱/i; // 特例: エディション同梱版はNG
+const EDITION_BUNDLE_REGEX = /エディション.*同梱/i;
 
-// プラットフォームや通常版を優遇するための加点ルール
+// プラットフォーム・エディション加点ルール
 const HARDWARE_BONUS_RULES = [
   { pattern: /switch|ps5/i, score: 30 },
   { pattern: /ps4|xbox/i, score: 20 },
   { pattern: /pc|edition|エディション|通常版|限定版/i, score: 10 },
 ];
 
-/**
- * 検索キーワードと商品タイトルの関連度を算出するスコアリング関数
- * 楽天BooksGame APIは周辺機器やグッズが混入しやすいため、独自のスコア計算でノイズを排除し、通常版ソフトを上位に引き上げます。
- *
- * @param {string} title - 楽天APIから取得した商品タイトル
- * @param {string} searchQuery - ユーザーが入力した検索キーワード
- * @returns {number} 計算された関連度スコア（マイナスは除外対象の目安）
- */
-function computeRelevanceScore(title, searchQuery) {
-  const normTitle = (title || "").toString().toLowerCase();
-  const normQuery = (searchQuery || "").toString().toLowerCase();
+/** 検索キーワードと商品タイトルの関連度スコアを計算する */
+function computeRelevanceScore(title, query) {
+  const normTitle = (title || "").toLowerCase();
+  const normQuery = (query || "").toLowerCase();
   let score = 0;
 
-  // 1. 致命的なNGワードが含まれている場合は即座に大幅減点（事実上の除外）
+  // NGワードで即除外
   if (NG_REGEX.test(normTitle) || EDITION_BUNDLE_REGEX.test(normTitle)) {
     return -9999;
   }
 
-  // 2. 検索キーワードとの関連度ボーナス
-  // クエリがタイトルの前方にあるほど、ユーザーが探している「そのもの」である可能性が高い
-  const queryIndex = normTitle.indexOf(normQuery);
-  if (queryIndex !== -1) {
-    // 含まれているだけでも基本ボーナス
-    score += 50;
-    // 前方一致（先頭に近い）ほど高いボーナス（最大+50）
-    score += Math.max(0, 50 - queryIndex);
+  // キーワード含有ボーナス（前方一致ほど高得点）
+  const idx = normTitle.indexOf(normQuery);
+  if (idx !== -1) {
+    score += 50 + Math.max(0, 50 - idx);
   }
 
-  // 3. タイトル長ペナルティ（スパム対策）
-  // 楽天特有の「【先着特典】〜〜〜(特典コード付き)」といった長すぎるタイトルを微減点し、スッキリした通常版を上位へ
+  // 長すぎるタイトルは減点（楽天の装飾タイトル対策）
   if (normTitle.length > 30) {
     score -= Math.min(20, normTitle.length - 30);
   }
 
-  // 4. ハードウェア・エディションによるベース評価
+  // ハードウェア加点
   for (const rule of HARDWARE_BONUS_RULES) {
-    if (rule.pattern.test(normTitle)) {
-      score += rule.score;
-    }
+    if (rule.pattern.test(normTitle)) score += rule.score;
   }
 
   return score;
@@ -78,27 +54,13 @@ export async function GET(req) {
   const accessKey = sanitizeInputString(process.env.RAKUTEN_ACCESS_KEY);
   const referrer = sanitizeInputString(process.env.RAKUTEN_REFERRER);
 
-  if (!appId) {
-    return NextResponse.json(
-      { error: "RAKUTEN_APP_ID is not set" },
-      { status: 500 },
-    );
-  }
-  if (!accessKey) {
-    return NextResponse.json(
-      { error: "RAKUTEN_ACCESS_KEY is not set" },
-      { status: 500 },
-    );
-  }
-  if (!referrer) {
-    return NextResponse.json(
-      { error: "RAKUTEN_REFERRER is not set" },
-      { status: 500 },
-    );
-  }
+  if (!appId)
+    return NextResponse.json({ error: "RAKUTEN_APP_ID is not set" }, { status: 500 });
+  if (!accessKey)
+    return NextResponse.json({ error: "RAKUTEN_ACCESS_KEY is not set" }, { status: 500 });
+  if (!referrer)
+    return NextResponse.json({ error: "RAKUTEN_REFERRER is not set" }, { status: 500 });
 
-  // 楽天の検索条件
-  // booksGenreId: "006" はソフトウェアジャンルだが、周辺機器等も混じるため後段でフィルタリングする
   const url = new URL(
     "https://openapi.rakuten.co.jp/services/api/BooksGame/Search/20170404",
   );
@@ -106,9 +68,9 @@ export async function GET(req) {
   url.searchParams.set("accessKey", accessKey);
   url.searchParams.set("format", "json");
   url.searchParams.set("title", searchQuery);
-  url.searchParams.set("booksGenreId", "006"); // ゲームソフトジャンル
-  url.searchParams.set("sort", "sales"); // 売上順
-  url.searchParams.set("hits", "30"); // 多めに取得して後でフィルタリング
+  url.searchParams.set("booksGenreId", "006");
+  url.searchParams.set("sort", "sales");
+  url.searchParams.set("hits", "30");
   url.searchParams.set("page", "1");
 
   const res = await fetch(url.toString(), {
@@ -121,85 +83,40 @@ export async function GET(req) {
     cache: "no-store",
   });
 
-  const apiResponseBody = await res
-    .json()
-    .catch(async () => ({ raw: await res.text() }));
+  const body = await res.json().catch(async () => ({ raw: await res.text() }));
 
   if (!res.ok) {
     return NextResponse.json(
-      {
-        error: "Rakuten BooksGame API error",
-        status: res.status,
-        body: apiResponseBody,
-      },
+      { error: "Rakuten BooksGame API error", status: res.status, body },
       { status: 500 },
     );
   }
 
-  let rakutenItems = [];
-  if (apiResponseBody && Array.isArray(apiResponseBody.Items)) {
-    // 楽天APIの構造 (Items > Item) に合わせた展開
-    const validItems = apiResponseBody.Items.filter(
-      (itemWrapper) => itemWrapper && itemWrapper.Item,
-    );
-
-    rakutenItems = validItems.map((itemWrapper) => {
-      const {
-        jan,
-        isbn,
-        title,
-        mediumImageUrl,
-        smallImageUrl,
-        itemUrl,
-        salesDate,
-      } = itemWrapper.Item;
-
-      const idVal = jan || isbn || "";
-      const titleVal = sanitizeInputString(title || "");
-      const imgVal = sanitizeInputString(mediumImageUrl || smallImageUrl || "");
-      const urlVal = sanitizeInputString(itemUrl || "");
-
-      let dateVal = sanitizeInputString(salesDate || "");
-      if (dateVal) {
-        dateVal = dateVal
-          .replace("年", "-")
-          .replace("月", "-")
-          .replace("日", "");
-      }
+  const rawItems = (body?.Items ?? [])
+    .filter((w) => w?.Item)
+    .map(({ Item }) => {
+      const dateVal = sanitizeInputString(Item.salesDate)
+        .replace("年", "-")
+        .replace("月", "-")
+        .replace("日", "");
 
       return {
         source: "rakuten",
-        id: idVal,
-        title: titleVal,
-        imageUrl: imgVal,
-        url: urlVal,
+        id: Item.jan || Item.isbn || "",
+        title: sanitizeInputString(Item.title),
+        imageUrl: sanitizeInputString(Item.mediumImageUrl || Item.smallImageUrl),
+        url: sanitizeInputString(Item.itemUrl),
         releaseDate: dateVal,
       };
     });
-  }
 
-  // --- データパイプライン (Method Chaining) ---
-  // APIから返ってきた生のデータ群に対し、
-  // 1. Array.map: 事前に計算した「関連度スコア」を各オブジェクトに付与
-  // 2. Array.filter: スコアがマイナスのもの（除外対象のノイズ等）を足切り
-  // 3. Array.sort: スコアが高い順（関連度順）に並び替え
-  // 4. Array.slice: 画面表示用として上位12件のみに絞り込む
-  // 5. Array.map: フロントエンドへ送る前に、計算役目を終えた内部スコアキーを削除して綺麗にする
-  // これらの一連のデータ加工を、一時変数を作らずスマートに繋げて行う（モダンJavaScriptの手法）。
-  const filteredItems = rakutenItems
-    .map((item) => {
-      const score = computeRelevanceScore(item.title, searchQuery);
-      return { ...item, _relevanceScore: score };
-    })
-    .filter((item) => item._relevanceScore >= -1000)
-    .sort((a, b) => {
-      return b._relevanceScore - a._relevanceScore;
-    })
+  // スコアリング → フィルタ → ソート → 上位12件
+  const items = rawItems
+    .map((item) => ({ ...item, _score: computeRelevanceScore(item.title, searchQuery) }))
+    .filter((item) => item._score >= -1000)
+    .sort((a, b) => b._score - a._score)
     .slice(0, 12)
-    .map((item) => {
-      const { _relevanceScore, ...cleanItem } = item;
-      return cleanItem;
-    });
+    .map(({ _score, ...rest }) => rest);
 
-  return NextResponse.json({ items: filteredItems });
+  return NextResponse.json({ items });
 }

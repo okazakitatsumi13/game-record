@@ -1,11 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-
-// 外部ライブラリ
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
-// UIコンポーネント (shadcn/ui)
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -18,14 +15,12 @@ import {
   SelectItem,
 } from "@/components/ui/select";
 
-// 機能系コンポーネント
 import { GameDialog } from "@/components/GameDialog";
 import { GameList } from "@/components/GameList";
 import { GameSearchDialog } from "@/components/GameSearchDialog";
 import AuthButtons from "@/components/AuthButtons";
 
-// 定数・ユーティリティ・APIクライアント
-import { GAME_STATUSES, DEFAULT_PLATFORMS } from "@/lib/constants";
+import { GAME_STATUSES } from "@/lib/constants";
 import { createSupabaseBrowser } from "@/lib/supabase/client";
 import {
   loadLocalGames,
@@ -33,497 +28,314 @@ import {
   clearLocalGames,
   makeLocalId,
 } from "@/lib/localGames";
-
-function convertTimestampToMilliseconds(timestamp) {
-  if (!timestamp) return 0;
-  const t = new Date(timestamp).getTime();
-  return Number.isNaN(t) ? 0 : t;
-}
-
-// DB row -> アプリ内 game 形式
-function rowToGame(row) {
-  return {
-    id: row.id,
-    title: row.title ?? "",
-    platform: row.platform ?? "",
-    status: row.status ?? "",
-    memo: row.memo ?? "",
-
-    releaseDate: row.release_date ?? "",
-    playStartDate: row.play_start_date ?? "",
-    clearDate: row.clear_date ?? "",
-
-    thumbnailUrl: row.thumbnail_url ?? "",
-    storeUrl: row.store_url ?? "",
-
-    createdAt: convertTimestampToMilliseconds(row.created_at),
-    updatedAt: convertTimestampToMilliseconds(row.updated_at),
-  };
-}
-
-/**
- * アプリ内のGameオブジェクトをSupabase保存用のPayloadに変換します。
- * falsyな値や空文字はnullとして扱い、DB側の制約やデフォルトと矛盾しないよう整えます。
- */
-function gameToPayload(game, userId) {
-  return {
-    ...(userId && { user_id: userId }),
-    title: game.title?.trim() || "",
-    status: game.status || "",
-    platform: game.platform?.trim() || null,
-    memo: game.memo?.trim() || null,
-    release_date: game.releaseDate || null,
-    play_start_date: game.playStartDate || null,
-    clear_date: game.clearDate || null,
-    thumbnail_url: game.thumbnailUrl || null,
-    store_url: game.storeUrl || null,
-  };
-}
-
-function mergePlatformOptions(games) {
-  let options = [...DEFAULT_PLATFORMS];
-
-  if (!games) {
-    return options;
-  }
-
-  // まず platform を持つものだけに絞り込み、前後の空白を取り除いた文字列の配列を作る
-  const gamePlatforms = games
-    .filter((g) => g && g.platform)
-    .map((g) => g.platform.trim());
-
-  // 新しいプラットフォームならリストに追加する
-  gamePlatforms.forEach((p) => {
-    if (p !== "" && !options.includes(p)) {
-      options.push(p);
-    }
-  });
-
-  return options;
-}
-
-// Steam検索などで返る日付を "YYYY-MM-DD" のみに正規化
-function formatToYearMonthDay(dateValue) {
-  if (!dateValue) return "";
-  if (/^\d{4}-\d{2}-\d{2}$/.test(dateValue)) return dateValue;
-  return "";
-}
-
-function normalizeKeyForDedupe(game) {
-  const t = (game.title ?? "").trim().toLowerCase();
-  const p = (game.platform ?? "").trim().toLowerCase();
-  const u = (game.storeUrl ?? "").trim(); // storeUrlは大小区別するケースが少ないのでそのまま
-  return `${t}__${p}__${u}`;
-}
-
-// undefined / null や無効な日付をハンドリングして安全にミリ秒を返却するソート用ヘルパー
-function releaseToTime(value) {
-  if (!value) return null;
-  const t = new Date(value).getTime();
-  if (Number.isNaN(t)) {
-    return null;
-  } else {
-    return t;
-  }
-}
-
-// UI側のプラットフォーム選択候補のチェック（新規自由入力分を優先する）
-function effectivePlatformForCheck(game, maybeNewPlatform) {
-  if (maybeNewPlatform) return maybeNewPlatform;
-  return game.platform || "";
-}
+import {
+  rowToGame,
+  gameToPayload,
+  mergePlatformOptions,
+  formatToYearMonthDay,
+  normalizeKeyForDedupe,
+  effectivePlatformForCheck,
+  sortGames,
+} from "@/lib/gameHelpers";
 
 export default function HomePageClient() {
   const supabase = useMemo(() => createSupabaseBrowser(), []);
 
-  // --- アプリケーションの状態管理 (State) ---
-  // ゲームデータのリストと、登録されているプラットフォームの候補一覧
+  // ゲームデータ
   const [games, setGames] = useState([]);
   const [platformOptions, setPlatformOptions] = useState([]);
 
-  // UIの表示状態（ダイアログの開閉や、読み込み中のスピナー表示など）
+  // UI 状態
   const [dialogOpen, setDialogOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState("create");
   const [editingGame, setEditingGame] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // 検索・フィルタリング・ソート用の状態
+  // フィルタ・ソート
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterPlatform, setFilterPlatform] = useState("all");
   const [sortOption, setSortOption] = useState("updated_desc");
 
-  // 現在のログインユーザー情報（未ログイン時は null）
+  // 認証
   const [currentUser, setCurrentUser] = useState(undefined);
-
-  const handleLogin = async () => {
-    await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo: `${location.origin}/auth/callback` },
-    });
-  };
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-  };
-
-  // ログイン後の「ローカル→DB自動移行」を1回だけ実行するため
   const hasMigratedRef = useRef(false);
   const previousUserRef = useRef(undefined);
 
   const storageMode = currentUser ? "db" : "local";
 
-  // --- 初期化処理：Supabaseのセッション監視 ---
-  // コンポーネントがマウントされた時に、ユーザーのログイン状態を確認し、
-  // 以降もログイン/ログアウトの変化を監視（リッスン）し続ける
+  // ---------- 認証 ----------
+
+  const handleLogin = useCallback(async () => {
+    await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: `${location.origin}/auth/callback` },
+    });
+  }, [supabase]);
+
+  const handleLogout = useCallback(async () => {
+    await supabase.auth.signOut();
+  }, [supabase]);
+
+  // セッション監視
   useEffect(() => {
     supabase.auth
       .getUser()
       .then(({ data }) => setCurrentUser(data.user ?? null));
 
-    const { data: subscriptionData } = supabase.auth.onAuthStateChange(
-      (_e, session) => {
-        setCurrentUser(session?.user ?? null);
-      },
-    );
-
-    return () => subscriptionData.subscription.unsubscribe();
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
+      setCurrentUser(session?.user ?? null);
+    });
+    return () => sub.subscription.unsubscribe();
   }, [supabase]);
 
-  // 認証状態の変化に応じたトースト通知の表示
-  // ※初回マウント時は前回の状態が未確定なためスキップする
+  // ログイン/ログアウトのトースト通知
   useEffect(() => {
     if (previousUserRef.current === undefined) {
       previousUserRef.current = currentUser;
       return;
     }
-
-    const previousUser = previousUserRef.current;
+    const prev = previousUserRef.current;
     previousUserRef.current = currentUser;
 
-    if (!previousUser && currentUser) toast.success("ログインしました");
-    if (previousUser && !currentUser) toast("ログアウトしました");
+    if (!prev && currentUser) toast.success("ログインしました");
+    if (prev && !currentUser) toast("ログアウトしました");
   }, [currentUser]);
 
-  async function fetchDbGames(supabase) {
+  // ---------- データ取得 ----------
+
+  async function fetchDbGames() {
     const { data, error } = await supabase
       .from("games")
       .select("*")
       .order("updated_at", { ascending: false });
-
     if (error) throw error;
     return (data ?? []).map(rowToGame);
   }
 
-  async function migrateLocalDataToDatabase({ supabase, targetUser }) {
-    const localGames = loadLocalGames();
-    if (localGames.length === 0) return;
+  async function migrateLocalToDb(targetUser) {
+    const local = loadLocalGames();
+    if (local.length === 0) return;
 
-    const { data: dbMiniGames, error: dbMiniError } = await supabase
+    const { data: existing, error } = await supabase
       .from("games")
       .select("id,title,platform,store_url");
-
-    if (dbMiniError) throw dbMiniError;
+    if (error) throw error;
 
     const existsSet = new Set(
-      (dbMiniGames ?? []).map((databaseGame) => {
-        const titleString = (databaseGame.title ?? "").trim().toLowerCase();
-        const platformString = (databaseGame.platform ?? "")
-          .trim()
-          .toLowerCase();
-        const urlString = (databaseGame.store_url ?? "").trim();
-        return `${titleString}__${platformString}__${urlString}`;
+      (existing ?? []).map((r) => {
+        const t = (r.title ?? "").trim().toLowerCase();
+        const p = (r.platform ?? "").trim().toLowerCase();
+        const u = (r.store_url ?? "").trim();
+        return `${t}__${p}__${u}`;
       }),
     );
 
-    const mappedPayloads = localGames
-      .filter((localGame) => !existsSet.has(normalizeKeyForDedupe(localGame)))
-      .map((localGame) => gameToPayload(localGame, targetUser.id));
+    const newPayloads = local
+      .filter((g) => !existsSet.has(normalizeKeyForDedupe(g)))
+      .map((g) => gameToPayload(g, targetUser.id));
 
-    if (mappedPayloads.length > 0) {
-      const { error: insertError } = await supabase
+    if (newPayloads.length > 0) {
+      const { error: insertErr } = await supabase
         .from("games")
-        .insert(mappedPayloads);
-      if (insertError) throw insertError;
+        .insert(newPayloads);
+      if (insertErr) throw insertErr;
     }
-
     clearLocalGames();
   }
 
-  // --- データフェッチとマイグレーション ---
-  // ユーザーのログイン状態が確定したタイミングで、データを読み込む
+  // 認証状態に応じたデータロード
   useEffect(() => {
     if (currentUser === undefined) return;
 
-    const loadApplicationData = async () => {
-      // 未ログイン状態: localStorageのデータをソースとする
+    (async () => {
       if (!currentUser) {
         hasMigratedRef.current = false;
-        const localGamesList = loadLocalGames();
-        setGames(localGamesList);
-        setPlatformOptions(mergePlatformOptions(localGamesList));
+        const local = loadLocalGames();
+        setGames(local);
+        setPlatformOptions(mergePlatformOptions(local));
         setIsLoading(false);
         return;
       }
 
-      // --- ログイン: DB ---
       setIsLoading(true);
-
       try {
-        // (A) ローカル→DB 移行（初回ログイン時だけ）
         if (!hasMigratedRef.current) {
           hasMigratedRef.current = true;
-          await migrateLocalDataToDatabase({
-            supabase,
-            targetUser: currentUser,
-          });
+          await migrateLocalToDb(currentUser);
         }
-
-        // (B) DB取得
-        const mappedDbGames = await fetchDbGames(supabase);
-        setGames(mappedDbGames);
-        setPlatformOptions(mergePlatformOptions(mappedDbGames));
-      } catch (error) {
-        console.error(error);
+        const dbGames = await fetchDbGames();
+        setGames(dbGames);
+        setPlatformOptions(mergePlatformOptions(dbGames));
+      } catch (err) {
+        console.error(err);
         toast.error("データの読み込みに失敗しました");
       } finally {
         setIsLoading(false);
       }
-    };
-
-    loadApplicationData();
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser, supabase]);
 
-  // UI表示用のフィルタリング & ソート処理
-  // --- フィルタリングとソートの適用 ---
-  // Reactの原則に基づき、元の state (`games`) は直接書き換えず、
-  // 表示用としてフィルタリング・ソートを行った「新しい配列」を都度生成する
-  let filteredGames = games.filter((game) => {
-    if (filterStatus !== "all" && game.status !== filterStatus) return false;
-    if (filterPlatform !== "all" && game.platform !== filterPlatform)
-      return false;
+  // ---------- フィルタ & ソート（メモ化） ----------
 
-    if (searchQuery.trim()) {
-      const lowerQuery = searchQuery.trim().toLowerCase();
-      const lowerTitle = (game.title || "").toLowerCase();
-      const lowerMemo = (game.memo || "").toLowerCase();
-      if (!lowerTitle.includes(lowerQuery) && !lowerMemo.includes(lowerQuery)) {
+  const displayGames = useMemo(() => {
+    const filtered = games.filter((game) => {
+      if (filterStatus !== "all" && game.status !== filterStatus) return false;
+      if (filterPlatform !== "all" && game.platform !== filterPlatform)
         return false;
+      if (searchQuery.trim()) {
+        const q = searchQuery.trim().toLowerCase();
+        const title = (game.title || "").toLowerCase();
+        const memo = (game.memo || "").toLowerCase();
+        if (!title.includes(q) && !memo.includes(q)) return false;
       }
-    }
-    return true;
-  });
+      return true;
+    });
+    return sortGames(filtered, sortOption);
+  }, [games, filterStatus, filterPlatform, searchQuery, sortOption]);
 
-  // 元の配列を変異（mutate）させないよう、スプレッド構文 `[...配列]` でコピーを作成してからソート
-  const displayGames = [...filteredGames].sort((a, b) => {
-    if (sortOption === "updated_desc") {
-      const aTime = a.updatedAt ? a.updatedAt : 0;
-      const bTime = b.updatedAt ? b.updatedAt : 0;
-      return bTime - aTime;
-    } else if (sortOption === "updated_asc") {
-      const aTime = a.updatedAt ? a.updatedAt : 0;
-      const bTime = b.updatedAt ? b.updatedAt : 0;
-      return aTime - bTime;
-    } else if (sortOption === "release_desc") {
-      const at = releaseToTime(a.releaseDate);
-      const bt = releaseToTime(b.releaseDate);
-      if (at === null && bt === null) return 0;
-      if (at === null) return 1;
-      if (bt === null) return -1;
-      return bt - at;
-    } else if (sortOption === "release_asc") {
-      const at = releaseToTime(a.releaseDate);
-      const bt = releaseToTime(b.releaseDate);
-      if (at === null && bt === null) return 0;
-      if (at === null) return 1;
-      if (bt === null) return -1;
-      return at - bt;
-    } else {
-      return 0;
-    }
-  });
+  // ---------- CRUD ----------
 
-  // ゲームの追加・編集処理（データソースのモードに応じて保存先を振り分ける）
-  async function handleSubmitGame(game, maybeNewPlatform) {
-    // 保存前の重複チェック（タイトルとプラットフォームの完全一致を弾く）
-    const targetTitle = (game.title || "").trim().toLowerCase();
-    const targetPlatform = (
-      effectivePlatformForCheck(game, maybeNewPlatform) || ""
-    )
-      .trim()
-      .toLowerCase();
-
-    const isDuplicate = games.some((existingGame) => {
-      // 編集時の「自分自身」は重複チェック対象から外す
-      if (dialogMode === "edit" && existingGame.id === game.id) {
-        return false;
-      }
-
-      const existingTitle = (existingGame.title || "").trim().toLowerCase();
-      const existingPlatform = (existingGame.platform || "")
+  const handleSubmitGame = useCallback(
+    async (game, maybeNewPlatform) => {
+      const targetTitle = (game.title || "").trim().toLowerCase();
+      const targetPlatform = (
+        effectivePlatformForCheck(game, maybeNewPlatform) || ""
+      )
         .trim()
         .toLowerCase();
 
-      return (
-        existingTitle === targetTitle && existingPlatform === targetPlatform
-      );
-    });
-
-    if (isDuplicate) {
-      toast.error("同じプラットフォームでこのゲームは既に登録されています");
-      return;
-    }
-
-    // platform候補の追加（local/DB共通）
-    if (maybeNewPlatform) {
-      setPlatformOptions((prev) =>
-        prev.includes(maybeNewPlatform) ? prev : [...prev, maybeNewPlatform],
-      );
-    }
-
-    // --- localStorage 永続化モード ---
-    if (storageMode === "local") {
-      const now = Date.now();
-
-      // ローカル保存時はID採番とタイムスタンプの管理をフロントエンド側で担う
-      const id = game.id || makeLocalId();
-
-      const nextGame = {
-        ...game,
-        id,
-        localId: id,
-        updatedAt: now,
-        createdAt: game.createdAt ?? now,
-      };
-
-      setGames((prev) => {
-        const next =
-          dialogMode === "edit"
-            ? prev.map((g) => (g.id === id ? nextGame : g))
-            : [nextGame, ...prev];
-
-        saveLocalGames(next);
-        return next;
+      const isDuplicate = games.some((eg) => {
+        if (dialogMode === "edit" && eg.id === game.id) return false;
+        return (
+          (eg.title || "").trim().toLowerCase() === targetTitle &&
+          (eg.platform || "").trim().toLowerCase() === targetPlatform
+        );
       });
 
-      return;
-    }
+      if (isDuplicate) {
+        toast.error("同じプラットフォームでこのゲームは既に登録されています");
+        return;
+      }
 
-    // --- DBモード ---
-    if (!currentUser) return;
+      if (maybeNewPlatform) {
+        setPlatformOptions((prev) =>
+          prev.includes(maybeNewPlatform) ? prev : [...prev, maybeNewPlatform],
+        );
+      }
 
-    try {
-      const isEdit = dialogMode === "edit";
-      const dbPayload = gameToPayload(game, currentUser.id);
+      // localStorage モード
+      if (storageMode === "local") {
+        const now = Date.now();
+        const id = game.id || makeLocalId();
+        const nextGame = {
+          ...game,
+          id,
+          localId: id,
+          updatedAt: now,
+          createdAt: game.createdAt ?? now,
+        };
 
-      // 更新時はuser_idの上書きを避ける
-      if (isEdit) delete dbPayload.user_id;
+        setGames((prev) => {
+          const next =
+            dialogMode === "edit"
+              ? prev.map((g) => (g.id === id ? nextGame : g))
+              : [nextGame, ...prev];
+          saveLocalGames(next);
+          return next;
+        });
+        return;
+      }
 
-      const itemsQuery = supabase.from("games");
-      const { data: dbData, error: dbError } = isEdit
-        ? await itemsQuery.update(dbPayload).eq("id", game.id).select().single()
-        : await itemsQuery.insert(dbPayload).select().single();
+      // DB モード
+      if (!currentUser) return;
 
-      if (dbError) throw dbError;
+      try {
+        const isEdit = dialogMode === "edit";
+        const payload = gameToPayload(game, currentUser.id);
+        if (isEdit) delete payload.user_id;
 
-      const savedDbGame = rowToGame(dbData);
-      setGames((prevList) =>
-        isEdit
-          ? prevList.map((existingGame) =>
-              existingGame.id === game.id ? savedDbGame : existingGame,
-            )
-          : [savedDbGame, ...prevList],
-      );
-      toast.success(isEdit ? "更新しました" : "追加しました");
-    } catch (err) {
-      console.error(err);
-      toast.error("保存に失敗しました");
-    }
-  }
+        const query = supabase.from("games");
+        const { data, error } = isEdit
+          ? await query.update(payload).eq("id", game.id).select().single()
+          : await query.insert(payload).select().single();
+        if (error) throw error;
 
-  // 外部APIの検索結果（Steam/楽天など）を、アプリ内データ構造に合わせてドラフト化しダイアログへ展開する
-  async function applySearchResultToForm(pickedResult) {
-    if (!pickedResult) return;
+        const saved = rowToGame(data);
+        setGames((prev) =>
+          isEdit
+            ? prev.map((g) => (g.id === game.id ? saved : g))
+            : [saved, ...prev],
+        );
+        toast.success(isEdit ? "更新しました" : "追加しました");
+      } catch (err) {
+        console.error(err);
+        toast.error("保存に失敗しました");
+      }
+    },
+    [games, dialogMode, storageMode, currentUser, supabase],
+  );
 
-    let resultTitle = "";
-    if (pickedResult.title) {
-      resultTitle = pickedResult.title.trim();
-    }
+  const applySearchResultToForm = useCallback((picked) => {
+    if (!picked) return;
+    const title = picked.title?.trim();
+    if (!title) return;
 
-    if (resultTitle === "") {
-      return;
-    }
-
-    let resultThumbnailUrl = "";
-    if (pickedResult.thumbnailUrl) {
-      resultThumbnailUrl = pickedResult.thumbnailUrl.trim();
-    } else if (pickedResult.coverUrl) {
-      resultThumbnailUrl = pickedResult.coverUrl.trim();
-    }
-
-    let resultStoreUrl = "";
-    if (pickedResult.storeUrl) {
-      resultStoreUrl = pickedResult.storeUrl.trim();
-    }
-
-    const draftGame = {
-      title: resultTitle,
+    setDialogMode("create");
+    setEditingGame({
+      title,
       status: "wishlist",
       platform: "Steam",
       memo: "",
-
-      releaseDate: formatToYearMonthDay(pickedResult.releaseDate),
+      releaseDate: formatToYearMonthDay(picked.releaseDate),
       playStartDate: "",
       clearDate: "",
-
-      thumbnailUrl: resultThumbnailUrl,
-      storeUrl: resultStoreUrl,
-
+      thumbnailUrl: (picked.thumbnailUrl || picked.coverUrl || "").trim(),
+      storeUrl: (picked.storeUrl || "").trim(),
       updatedAt: Date.now(),
       createdAt: Date.now(),
-    };
-
-    setDialogMode("create");
-    setEditingGame(draftGame);
+    });
     setDialogOpen(true);
     setSearchOpen(false);
-  }
+  }, []);
 
-  function handleEdit(game) {
+  const handleEdit = useCallback((game) => {
     setDialogMode("edit");
     setEditingGame(game);
     setDialogOpen(true);
-  }
+  }, []);
 
-  // ゲームデータの削除処理
-  async function handleDelete(id) {
-    if (storageMode === "local") {
-      setGames((prev) => {
-        const next = prev.filter((g) => g.id !== id);
-        saveLocalGames(next);
-        return next;
-      });
-      return;
-    }
+  const handleDelete = useCallback(
+    async (id) => {
+      if (storageMode === "local") {
+        setGames((prev) => {
+          const next = prev.filter((g) => g.id !== id);
+          saveLocalGames(next);
+          return next;
+        });
+        return;
+      }
+      if (!currentUser) return;
 
-    // db
-    if (!currentUser) return;
+      try {
+        const { error } = await supabase
+          .from("games")
+          .delete()
+          .eq("id", id);
+        if (error) throw error;
+        setGames((prev) => prev.filter((g) => g.id !== id));
+        toast.success("削除しました");
+      } catch (err) {
+        console.error(err);
+        toast.error("削除に失敗しました");
+      }
+    },
+    [storageMode, currentUser, supabase],
+  );
 
-    try {
-      const { error: deleteError } = await supabase
-        .from("games")
-        .delete()
-        .eq("id", id);
-      if (deleteError) throw deleteError;
-
-      setGames((prev) => prev.filter((g) => g.id !== id));
-      toast.success("削除しました");
-    } catch (err) {
-      console.error(err);
-      toast.error("削除に失敗しました");
-    }
-  }
+  // ---------- JSX ----------
 
   return (
     <main className="min-h-dvh p-4 sm:p-6">
@@ -550,7 +362,7 @@ export default function HomePageClient() {
 
         {/* Controls */}
         <section className="space-y-3">
-          {/* 1行目 */}
+          {/* Row 1: ステータスタブ + ソート */}
           <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
             <Tabs
               value={filterStatus}
@@ -561,7 +373,6 @@ export default function HomePageClient() {
                 <TabsTrigger value="all" className="w-full sm:w-auto">
                   すべて
                 </TabsTrigger>
-
                 {GAME_STATUSES.map((s) => (
                   <TabsTrigger
                     key={s.value}
@@ -589,7 +400,7 @@ export default function HomePageClient() {
             </div>
           </div>
 
-          {/* 2行目 */}
+          {/* Row 2: 検索 + ボタン */}
           <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
             <div className="flex w-full flex-1 items-center gap-2">
               <Input
@@ -627,9 +438,9 @@ export default function HomePageClient() {
             </div>
           </div>
 
-          {isLoading ? (
+          {isLoading && (
             <div className="text-sm text-muted-foreground">読み込み中…</div>
-          ) : null}
+          )}
         </section>
 
         {/* List */}
@@ -642,9 +453,7 @@ export default function HomePageClient() {
         {/* Add/Edit Dialog */}
         <GameDialog
           open={dialogOpen}
-          onOpenChange={(next) => {
-            setDialogOpen(next);
-          }}
+          onOpenChange={setDialogOpen}
           platformOptions={platformOptions}
           mode={dialogMode}
           initialGame={editingGame}

@@ -8,6 +8,9 @@ const nextConfig = {
       { protocol: "https", hostname: "steamuserimages-a.akamaihd.net" },
       { protocol: "https", hostname: "thumbnail.image.rakuten.co.jp" },
       { protocol: "https", hostname: "image.rakuten.co.jp" },
+      { protocol: "https", hostname: "m.media-amazon.com" },
+      { protocol: "https", hostname: "image.api.playstation.com" },
+      { protocol: "https", hostname: "store-jp.nintendo.com" },
     ],
   },
 };

@@ -12,13 +12,22 @@ export function toMilliseconds(timestamp) {
   return Number.isNaN(t) ? 0 : t;
 }
 
+// ----- 文字列ー配列変換ヘルパー -----
+function parsePlatforms(platformString) {
+  if (!platformString) return [];
+  return platformString
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 // ----- DB <-> App 変換 -----
 
 export function rowToGame(row) {
   return {
     id: row.id,
     title: row.title ?? "",
-    platform: row.platform ?? "",
+    platforms: parsePlatforms(row.platform),
     status: row.status ?? "",
     memo: row.memo ?? "",
     releaseDate: row.release_date ?? "",
@@ -36,7 +45,10 @@ export function gameToPayload(game, userId) {
     ...(userId && { user_id: userId }),
     title: game.title?.trim() || "",
     status: game.status || "",
-    platform: game.platform?.trim() || null,
+    platform:
+      game.platforms && game.platforms.length > 0
+        ? game.platforms.join(", ")
+        : null,
     memo: game.memo?.trim() || null,
     release_date: game.releaseDate || null,
     play_start_date: game.playStartDate || null,
@@ -52,9 +64,15 @@ export function mergePlatformOptions(games) {
   const options = [...DEFAULT_PLATFORMS];
   if (!games) return options;
 
+  const set = new Set(options);
   for (const g of games) {
-    const p = g?.platform?.trim();
-    if (p && !options.includes(p)) options.push(p);
+    if (!g.platforms) continue;
+    for (const p of g.platforms) {
+      if (!set.has(p)) {
+        set.add(p);
+        options.push(p);
+      }
+    }
   }
   return options;
 }
@@ -78,16 +96,23 @@ export function releaseToTime(value) {
 
 export function normalizeKeyForDedupe(game) {
   const t = (game.title ?? "").trim().toLowerCase();
-  const p = (game.platform ?? "").trim().toLowerCase();
+  const rawPlatforms = game.platforms || [];
+  // ソートしてカンマで繋ぐことで順序によらず判定できる
+  const p = [...rawPlatforms]
+    .map((s) => s.toLowerCase())
+    .sort()
+    .join(",");
   const u = (game.storeUrl ?? "").trim();
   return `${t}__${p}__${u}`;
 }
 
 /**
- * カスタム入力があればそれを、なければ既存の platform を返す。
+ * 送信用のプラットフォーム配列を構築する
  */
-export function effectivePlatformForCheck(game, maybeNewPlatform) {
-  return maybeNewPlatform || game.platform || "";
+export function effectivePlatformsForCheck(game, newPlatform) {
+  const pts = new Set(game.platforms || []);
+  if (newPlatform) pts.add(newPlatform.trim());
+  return Array.from(pts);
 }
 
 // ----- ソート -----

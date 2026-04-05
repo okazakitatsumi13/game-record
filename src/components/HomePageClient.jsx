@@ -34,9 +34,20 @@ import {
   mergePlatformOptions,
   formatToYearMonthDay,
   normalizeKeyForDedupe,
-  effectivePlatformForCheck,
+  effectivePlatformsForCheck,
   sortGames,
 } from "@/lib/gameHelpers";
+
+// --- ローカルデータの旧フォーマット互換用 ---
+function upgradeLocalGame(g) {
+  if (g.platforms) return g;
+  const pStr = g.platform || "";
+  const platforms = pStr
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return { ...g, platforms };
+}
 
 export default function HomePageClient() {
   const supabase = useMemo(() => createSupabaseBrowser(), []);
@@ -115,7 +126,7 @@ export default function HomePageClient() {
   }
 
   async function migrateLocalToDb(targetUser) {
-    const local = loadLocalGames();
+    const local = loadLocalGames().map(upgradeLocalGame);
     if (local.length === 0) return;
 
     const { data: existing, error } = await supabase
@@ -123,13 +134,9 @@ export default function HomePageClient() {
       .select("id,title,platform,store_url");
     if (error) throw error;
 
+    // 既存データを rowToGame で一度パースしてキーを生成
     const existsSet = new Set(
-      (existing ?? []).map((r) => {
-        const t = (r.title ?? "").trim().toLowerCase();
-        const p = (r.platform ?? "").trim().toLowerCase();
-        const u = (r.store_url ?? "").trim();
-        return `${t}__${p}__${u}`;
-      }),
+      (existing ?? []).map((r) => normalizeKeyForDedupe(rowToGame(r))),
     );
 
     const newPayloads = local
@@ -152,7 +159,7 @@ export default function HomePageClient() {
     (async () => {
       if (!currentUser) {
         hasMigratedRef.current = false;
-        const local = loadLocalGames();
+        const local = loadLocalGames().map(upgradeLocalGame);
         setGames(local);
         setPlatformOptions(mergePlatformOptions(local));
         setIsLoading(false);
@@ -183,7 +190,10 @@ export default function HomePageClient() {
   const displayGames = useMemo(() => {
     const filtered = games.filter((game) => {
       if (filterStatus !== "all" && game.status !== filterStatus) return false;
-      if (filterPlatform !== "all" && game.platform !== filterPlatform)
+      if (
+        filterPlatform !== "all" &&
+        !(game.platforms || []).includes(filterPlatform)
+      )
         return false;
       if (searchQuery.trim()) {
         const q = searchQuery.trim().toLowerCase();
@@ -201,17 +211,23 @@ export default function HomePageClient() {
   const handleSubmitGame = useCallback(
     async (game, maybeNewPlatform) => {
       const targetTitle = (game.title || "").trim().toLowerCase();
-      const targetPlatform = (
-        effectivePlatformForCheck(game, maybeNewPlatform) || ""
-      )
-        .trim()
-        .toLowerCase();
+      
+      const targetPlatforms = effectivePlatformsForCheck(game, maybeNewPlatform);
+      const sortedTargetPlatformsStr = [...targetPlatforms]
+        .map(s => s.toLowerCase())
+        .sort()
+        .join(",");
 
       const isDuplicate = games.some((eg) => {
         if (dialogMode === "edit" && eg.id === game.id) return false;
+        const egPlatformsStr = [...(eg.platforms || [])]
+          .map(s => s.toLowerCase())
+          .sort()
+          .join(",");
+
         return (
           (eg.title || "").trim().toLowerCase() === targetTitle &&
-          (eg.platform || "").trim().toLowerCase() === targetPlatform
+          egPlatformsStr === sortedTargetPlatformsStr
         );
       });
 
@@ -232,6 +248,7 @@ export default function HomePageClient() {
         const id = game.id || makeLocalId();
         const nextGame = {
           ...game,
+          platforms: targetPlatforms,
           id,
           localId: id,
           updatedAt: now,
@@ -287,7 +304,7 @@ export default function HomePageClient() {
     setEditingGame({
       title,
       status: "wishlist",
-      platform: "Steam",
+      platforms: ["Steam"],
       memo: "",
       releaseDate: formatToYearMonthDay(picked.releaseDate),
       playStartDate: "",

@@ -20,22 +20,21 @@ import {
   SelectItem,
 } from "@/components/ui/select";
 
+import { Badge } from "@/components/ui/badge";
 import { GAME_STATUSES } from "@/lib/constants";
 import { GameSearchDialog } from "@/components/GameSearchDialog";
 
 const STATUS_DEFAULT = GAME_STATUSES[0]?.value ?? "backlog";
-const PLATFORM_NONE = "__none__";
 
 /**
- * initialGame と platformOptions から初期値を計算する純粋関数。
- * useEffect の代わりにコンポーネント初期化時に呼び出す。
+ * initialGame から初期値を計算する純粋関数。
  */
-function computeInitialValues(initialGame, platformOptions) {
+function computeInitialValues(initialGame) {
   if (!initialGame) {
     return {
       title: "",
       status: STATUS_DEFAULT,
-      platformSelect: PLATFORM_NONE,
+      platforms: [],
       platformCustom: "",
       memo: "",
       releaseDate: "",
@@ -46,21 +45,11 @@ function computeInitialValues(initialGame, platformOptions) {
     };
   }
 
-  const p = (initialGame.platform ?? "").trim();
-  let platformSelect = PLATFORM_NONE;
-  let platformCustom = "";
-
-  if (p && platformOptions.includes(p)) {
-    platformSelect = p;
-  } else if (p) {
-    platformCustom = p;
-  }
-
   return {
     title: initialGame.title ?? "",
     status: initialGame.status ?? STATUS_DEFAULT,
-    platformSelect,
-    platformCustom,
+    platforms: [...(initialGame.platforms || [])],
+    platformCustom: "",
     memo: initialGame.memo ?? "",
     releaseDate: initialGame.releaseDate ?? "",
     thumbnailUrl: initialGame.thumbnailUrl ?? "",
@@ -71,8 +60,7 @@ function computeInitialValues(initialGame, platformOptions) {
 }
 
 /**
- * フォーム本体を独立コンポーネントに分離。
- * key による再マウントで useEffect なしにフォームをリセットする。
+ * フォーム本体
  */
 function GameDialogForm({
   platformOptions,
@@ -81,11 +69,11 @@ function GameDialogForm({
   onSubmit,
   onClose,
 }) {
-  const init = computeInitialValues(initialGame, platformOptions);
+  const init = computeInitialValues(initialGame);
 
   const [title, setTitle] = useState(init.title);
   const [status, setStatus] = useState(init.status);
-  const [platformSelect, setPlatformSelect] = useState(init.platformSelect);
+  const [selectedPlatforms, setSelectedPlatforms] = useState(init.platforms);
   const [platformCustom, setPlatformCustom] = useState(init.platformCustom);
   const [memo, setMemo] = useState(init.memo);
   const [releaseDate, setReleaseDate] = useState(init.releaseDate);
@@ -96,8 +84,25 @@ function GameDialogForm({
 
   const [searchOpen, setSearchOpen] = useState(false);
 
-  const effectivePlatform =
-    platformCustom.trim() || (platformSelect !== PLATFORM_NONE ? platformSelect : "");
+  // 初期の platformOptions と 現在選択中の platforms をマージして表示候補にする
+  const displayPlatformOptions = Array.from(
+    new Set([...platformOptions, ...selectedPlatforms])
+  );
+
+  function togglePlatform(p) {
+    setSelectedPlatforms((prev) =>
+      prev.includes(p) ? prev.filter((item) => item !== p) : [...prev, p]
+    );
+  }
+
+  function handleAddCustomPlatform() {
+    const val = platformCustom.trim();
+    if (!val) return;
+    if (!selectedPlatforms.includes(val)) {
+      setSelectedPlatforms((prev) => [...prev, val]);
+    }
+    setPlatformCustom(""); // 追加後にクリア
+  }
 
   function applySearchResult(picked) {
     if (!picked) return;
@@ -112,16 +117,23 @@ function GameDialogForm({
     const trimmedTitle = title.trim();
     if (!trimmedTitle) return;
 
-    const maybeNewPlatform =
-      effectivePlatform && !platformOptions.includes(effectivePlatform)
-        ? effectivePlatform
-        : undefined;
+    // 現在のカスタム入力欄に文字が残っていたら、それもプラットフォームに含める
+    const finalCustom = platformCustom.trim();
+    const finalPlatforms = [...selectedPlatforms];
+    if (finalCustom && !finalPlatforms.includes(finalCustom)) {
+      finalPlatforms.push(finalCustom);
+    }
+
+    // 「新しく追加された未登録プラットフォーム」があれば抜き出す（HomePageClientのオプション更新用）
+    const maybeNewPlatform = finalCustom 
+      ? (!platformOptions.includes(finalCustom) ? finalCustom : undefined)
+      : undefined;
 
     onSubmit(
       {
         ...(mode === "edit" && initialGame?.id ? { id: initialGame.id } : {}),
         title: trimmedTitle,
-        platform: effectivePlatform,
+        platforms: finalPlatforms,
         status,
         memo: memo.trim(),
         releaseDate: releaseDate || "",
@@ -130,7 +142,7 @@ function GameDialogForm({
         thumbnailUrl: thumbnailUrl || "",
         storeUrl: storeUrl || "",
       },
-      maybeNewPlatform,
+      maybeNewPlatform
     );
     onClose();
   }
@@ -158,47 +170,54 @@ function GameDialogForm({
           />
         </div>
 
-        <div className="grid gap-3 md:grid-cols-2">
-          <div className="grid gap-2">
-            <Label>ステータス</Label>
-            <Select value={status} onValueChange={setStatus}>
-              <SelectTrigger>
-                <SelectValue placeholder="ステータスを選択" />
-              </SelectTrigger>
-              <SelectContent>
-                {GAME_STATUSES.map((s) => (
-                  <SelectItem key={s.value} value={s.value}>
-                    {s.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+        <div className="grid gap-2">
+          <Label>ステータス</Label>
+          <Select value={status} onValueChange={setStatus}>
+            <SelectTrigger>
+              <SelectValue placeholder="ステータスを選択" />
+            </SelectTrigger>
+            <SelectContent>
+              {GAME_STATUSES.map((s) => (
+                <SelectItem key={s.value} value={s.value}>
+                  {s.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="grid gap-2">
+          <Label>プラットフォーム（複数選択可）</Label>
+          <div className="flex flex-wrap gap-2">
+            {displayPlatformOptions.map((p) => {
+              const isSelected = selectedPlatforms.includes(p);
+              return (
+                <Badge
+                  key={p}
+                  variant={isSelected ? "default" : "outline"}
+                  className="cursor-pointer select-none px-3 py-1 text-sm font-medium hover:opacity-80 transition-opacity"
+                  onClick={() => togglePlatform(p)}
+                >
+                  {p}
+                </Badge>
+              );
+            })}
           </div>
-
-          <div className="grid gap-2">
-            <Label>プラットフォーム</Label>
-            <Select
-              value={platformSelect}
-              onValueChange={setPlatformSelect}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="未選択" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={PLATFORM_NONE}>未選択</SelectItem>
-                {platformOptions.map((p) => (
-                  <SelectItem key={p} value={p}>
-                    {p}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
+          <div className="flex gap-2 mt-1">
             <Input
               value={platformCustom}
               onChange={(e) => setPlatformCustom(e.target.value)}
               placeholder="候補に無ければ入力（例：PC）"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  handleAddCustomPlatform();
+                }
+              }}
             />
+            <Button type="button" variant="secondary" onClick={handleAddCustomPlatform}>
+              追加
+            </Button>
           </div>
         </div>
 

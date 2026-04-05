@@ -44,7 +44,7 @@ export function GameCard({ game, onEdit, onDelete }) {
   const updatedAtStr = formatUpdatedAt(game.updatedAt);
   const thumbnail = game.thumbnailUrl?.trim() || "";
   const storeUrl = game.storeUrl?.trim() || "";
-  const platform = game.platform?.trim() || "";
+  const platforms = game.platforms || [];
 
   const statusInfo = STATUS_MAP[game.status];
   const statusLabel = statusInfo?.label ?? game.status ?? "";
@@ -74,7 +74,7 @@ export function GameCard({ game, onEdit, onDelete }) {
             </LinkOrSpan>
 
             <div className="min-w-0 flex-1 flex flex-col">
-              <div className="flex min-w-0 items-center gap-2">
+              <div className="flex min-w-0 items-center justify-between gap-2">
                 <div className="min-w-0 flex-1 basis-0 truncate text-base font-semibold sm:text-lg">
                   <LinkOrSpan
                     href={storeUrl}
@@ -84,22 +84,35 @@ export function GameCard({ game, onEdit, onDelete }) {
                   </LinkOrSpan>
                 </div>
 
-                {platform && (
-                  <Badge variant="secondary" className="shrink-0">
-                    {platform}
-                  </Badge>
+                {platforms.length > 0 && (
+                  <div className="flex shrink-0 flex-wrap gap-1 justify-end">
+                    {platforms.map((p) => (
+                      <Badge key={p} variant="secondary">
+                        {p}
+                      </Badge>
+                    ))}
+                  </div>
                 )}
               </div>
 
               <div className="mt-2 flex items-center gap-2">
                 <Badge
-                  className={`inline-flex w-20 justify-center ${statusBadgeClass}`}
+                  className={`inline-flex w-20 shrink-0 justify-center ${statusBadgeClass}`}
                 >
                   {statusLabel}
                 </Badge>
 
+                {game.memo && (
+                  <p 
+                    className="min-w-0 flex-1 truncate text-sm text-muted-foreground" 
+                    title={game.memo}
+                  >
+                    {game.memo}
+                  </p>
+                )}
+
                 {/* モバイル用メニュー */}
-                <div className="ml-auto sm:hidden">
+                <div className="ml-auto shrink-0 sm:hidden">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button
@@ -128,12 +141,6 @@ export function GameCard({ game, onEdit, onDelete }) {
                   </DropdownMenu>
                 </div>
               </div>
-
-              {game.memo && (
-                <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">
-                  {game.memo}
-                </p>
-              )}
 
               {(releaseDate || updatedAtStr) && (
                 <div className="mt-auto flex flex-col gap-1 pt-2 text-xs text-muted-foreground sm:flex-row sm:items-end sm:justify-between">
